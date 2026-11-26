@@ -1,0 +1,28 @@
+channel: movement
+schema: movement_pred_v1
+label_space:
+  global:
+    - NOM
+    - HOLD
+    - ST
+    - CU
+    - CI
+  local:
+    - NOM
+    - HOLD
+    - TME
+    - TMW
+    - TMN
+    - TML
+    - TMI
+    - TMH
+primary: global
+geometry:
+  hold_disp: 0.18
+  hold_path: 0.28
+  straight_linearity: 0.78
+  circle_closure: 0.55
+  min_valid_frames: 3
+data:
+  ann_root: ../data28
+  features_dir: data/features

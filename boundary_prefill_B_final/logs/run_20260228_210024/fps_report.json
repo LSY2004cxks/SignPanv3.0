@@ -1,0 +1,22 @@
+{
+  "train": {
+    "expected_fps": 30,
+    "num_records": 2,
+    "num_with_fps": 2,
+    "unique_fps": [
+      30.0
+    ],
+    "mean_fps": 30.0,
+    "num_mismatch_expected": 0
+  },
+  "val": {
+    "expected_fps": 30,
+    "num_records": 1,
+    "num_with_fps": 1,
+    "unique_fps": [
+      30.0
+    ],
+    "mean_fps": 30.0,
+    "num_mismatch_expected": 0
+  }
+}

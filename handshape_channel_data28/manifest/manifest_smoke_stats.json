@@ -1,0 +1,9 @@
+{
+  "num_samples": 200,
+  "counts": {
+    "train": 120,
+    "val": 40,
+    "test": 40
+  },
+  "labels": 26
+}

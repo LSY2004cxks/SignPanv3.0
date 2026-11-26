@@ -1,0 +1,62 @@
+# Full model: ROI + normal + geom + text + cross-attn
+output_root: outputs
+seed: 42
+
+# data
+params:
+  data_root: ../data28
+  split_dir: ../data28/split
+  precomputed_dir: ../data28/precomputed
+  external_roi_dir: ../data28_roi_fixlen_mmpose
+  external_skeleton_dir: ../data28_mp_hand3d_effective
+  use_precomputed: true
+  roi_input: auto   # feat | img | auto
+  use_frames: true       # if precomputed is missing
+  video_dir: ../data28/videos
+  frames_dir: ../data28/frames
+  labels_file: configs/orientation_labels.txt
+  prototypes_path: ../data28/precomputed/prototypes.pt
+  roi_size: 224
+  T: 24
+  sampling: biased_start
+  sampling_bias: 0.7
+
+# model
+model:
+  roi_backbone: resnet18  # resnet18 | convnext_tiny
+  roi_feat_dim: 512
+  geom_encoder_type: stgcn  # stgcn | transformer
+  geom_dim: 256
+  normal_dim: 128
+  fused_dim: 256
+  cross_attn_heads: 4
+  use_text: true
+  use_normal: true
+  use_geom: true
+  use_roi: true
+  use_text_as_kv: false
+
+# training
+train:
+  epochs: 60
+  batch_size: 4
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  num_workers: 4
+  device: cuda
+  grad_clip_norm: 1.0
+  sanitize_logits: true
+  skip_nonfinite_loss: true
+
+# calibration
+calibration:
+  enable: true
+  ece_bins: 15
+  temperature_init: 1.0
+
+# HITL gating
+hitl:
+  theta_high: 0.85
+  theta_low: 0.60
+  margin_min: 0.12
+  low_quality_flags: [FRAME_MISSING, NO_HAND, ROI_TOO_SMALL]

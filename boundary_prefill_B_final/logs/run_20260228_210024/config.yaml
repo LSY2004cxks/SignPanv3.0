@@ -1,0 +1,94 @@
+project:
+  name: boundary_prefill_B_final
+  seed: 7
+data:
+  video_root: /home/yuan/桌面/SignPanv2.0/data28
+  label_root: /home/yuan/桌面/SignPanv2.0/data28
+  pose_root: /home/yuan/桌面/SignPanv2.0/data28_pose
+  expected_fps: 30
+  allow_pose_missing: false
+splits:
+  file: /home/yuan/桌面/SignPanv2.0/boundary_prefill_B_final/splits/signer_split_data28.json
+features:
+  score_thr: 0.3
+  median_k: 5
+  expected_dim: 23
+  flow:
+    enabled: false
+    root: /home/yuan/桌面/SignPanv2.0/data28_flow_tvl1
+    feature_dim: 6
+    feature_keys:
+    - mu
+    - p95
+    - p99
+    - delta_mu
+    - u_mean
+    - v_mean
+    allow_missing: true
+labels:
+  sigma: 3
+  radius: 9
+  use_valid_only: true
+model:
+  fusion_mode: early
+  pose_dim: 23
+  flow_dim: 6
+  fusion_dim: 64
+  gate_hidden: 64
+  channels: 128
+  layers: 4
+  dilations:
+  - 1
+  - 2
+  - 4
+  - 8
+  kernel_size: 3
+  dropout: 0.2
+loss:
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+  inside_weight: 0.5
+train:
+  optimizer: AdamW
+  batch_size: 2
+  epochs: 1
+  lr: 0.001
+  weight_decay: 0.01
+  num_workers: 0
+  clip_grad_norm: 1.0
+  early_stop:
+    enabled: true
+    metric: val_mean_f1_w7
+    patience: 10
+    min_delta: 0.0
+infer:
+  tau: 0.5
+  peak_radius: 7
+  w_nms: 7
+  Lmin: 6
+  Lmax: 80
+  inside_recommend_thr: 0.5
+  pair_mode: score_then_nearest
+eval:
+  windows:
+  - 3
+  - 5
+  - 7
+  primary_window: 7
+  iou_thr: 0.5
+  iou_thresholds:
+  - 0.3
+  - 0.5
+  - 0.7
+  tau_scan:
+    start: 0.1
+    end: 0.9
+    step: 0.05
+paths:
+  logs_dir: logs
+  outputs_dir: outputs
+  prefill_dir: outputs/prefill_B
+  vis_dir: outputs/vis
+  probs_dir: outputs/probs
+runtime:
+  device: auto

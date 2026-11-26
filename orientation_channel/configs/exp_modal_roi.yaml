@@ -1,0 +1,15 @@
+inherit: full.yaml
+output_root: outputs/exp_modal_roi
+
+params:
+  roi_input: auto
+
+model:
+  roi_backbone: resnet18
+  use_roi: true
+  use_geom: false
+  use_normal: false
+  use_text: false
+
+train:
+  lr: 3.0e-4

@@ -1,0 +1,40 @@
+# format: LABEL\tPROMPT
+TU	palm facing upward in a body-centric frame
+TU	palm up, toward the ceiling
+TU	palm orientation points to the signer's upper direction
+
+TD	palm facing downward in a body-centric frame
+TD	palm down, toward the floor
+TD	palm orientation points to the signer's lower direction
+
+TL	palm facing the signer's left side (body-centric)
+TL	palm points toward the signer's left shoulder
+TL	leftward palm orientation relative to the torso
+
+TR	palm facing the signer's right side (body-centric)
+TR	palm points toward the signer's right shoulder
+TR	rightward palm orientation relative to the torso
+
+TLU	palm facing up-left relative to the signer body
+TLU	diagonal upper-left palm orientation (body-centric)
+TLU	palm points between up and the signer's left side
+
+TRU	palm facing up-right relative to the signer body
+TRU	diagonal upper-right palm orientation (body-centric)
+TRU	palm points between up and the signer's right side
+
+TLD	palm facing down-left relative to the signer body
+TLD	diagonal lower-left palm orientation (body-centric)
+TLD	palm points between down and the signer's left side
+
+TRD	palm facing down-right relative to the signer body
+TRD	diagonal lower-right palm orientation (body-centric)
+TRD	palm points between down and the signer's right side
+
+AFB	palm facing away from the torso, outward
+AFB	palm orientation points forward from the signer body
+AFB	palm faces away from the body center
+
+TB	palm facing toward the torso, inward
+TB	palm orientation points back to the signer body
+TB	palm faces the body center

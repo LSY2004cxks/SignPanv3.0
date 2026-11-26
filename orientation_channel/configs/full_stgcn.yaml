@@ -1,0 +1,4 @@
+# Full model with ST-GCN
+inherit: full.yaml
+model:
+  geom_encoder_type: stgcn

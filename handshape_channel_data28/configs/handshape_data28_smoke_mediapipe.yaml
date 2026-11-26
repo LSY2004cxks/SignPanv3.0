@@ -1,0 +1,62 @@
+experiment:
+  exp_name: handshape_data28_smoke
+  seed: 42
+  runs_root: runs_smoke
+data:
+  data_root: ../data28
+  manifest_path: manifest/manifest_smoke.jsonl
+  split_dir: splits
+  k: 4
+  k_candidates:
+  - 4
+  - 8
+  roi_size: 224
+  cache_keypoints_dir: cache_smoke/keypoints
+  cache_roi_dir: cache_smoke/roi
+  cache_skeleton_dir: cache_smoke/skeleton
+  cache_meta_dir: cache_smoke/meta
+  num_workers: 0
+  on_the_fly_fallback: true
+  tier_weights:
+    A: 1.0
+    B: 0.8
+    C: 0.5
+    D: 0.2
+preprocess:
+  engine:
+    default: mediapipe
+    health_csv: data28_video_health.csv
+    swap_left_right: false
+    fallback_max_frames: 3
+    mmpose_pose2d: wholebody
+    mediapipe_min_det_conf: 0.4
+model:
+  mode: skel_only
+  roi_backbone: convnext_tiny
+  roi_dim: 512
+  skel_dim: 256
+  fusion_hidden: 512
+  dropout: 0.1
+  pretrained: false
+  freeze_backbone: false
+loss:
+  tau: 0.07
+  lambda_nce: 0.1
+training:
+  optimizer: AdamW
+  lr_head: 0.0003
+  lr_backbone: 1.0e-05
+  weight_decay: 0.0001
+  batch_size: 8
+  epochs: 1
+  stage1_epochs: 0
+  early_stop_metric: hit@3
+  patience: 2
+  min_delta: 0.0005
+  class_imbalance:
+    strategy: class_balanced_sampler
+    beta: 0.9999
+inference:
+  gating:
+    margin_min: 0.2
+    p1_min: 0.7

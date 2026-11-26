@@ -1,0 +1,65 @@
+{
+  "fold_id": 2,
+  "train_signers": [
+    "S10",
+    "S12",
+    "S13",
+    "S20",
+    "S29",
+    "S34",
+    "S36",
+    "S43",
+    "S49",
+    "S58",
+    "S60",
+    "S65",
+    "S92",
+    "S109",
+    "S116",
+    "S124",
+    "S136",
+    "S178"
+  ],
+  "val_signers": [
+    "S8",
+    "S19",
+    "S42",
+    "S61",
+    "S100"
+  ],
+  "test_signers": [
+    "S21",
+    "S22",
+    "S48",
+    "S57",
+    "S142"
+  ],
+  "anchor_train_signers": [
+    "S109"
+  ],
+  "anchor_all_in_train": true,
+  "summary": {
+    "train": {
+      "num_signers": 18,
+      "num_samples": 4492,
+      "num_labels": 30,
+      "missing_labels": []
+    },
+    "val": {
+      "num_signers": 5,
+      "num_samples": 1258,
+      "num_labels": 29,
+      "missing_labels": [
+        "HSH"
+      ]
+    },
+    "test": {
+      "num_signers": 5,
+      "num_samples": 1227,
+      "num_labels": 29,
+      "missing_labels": [
+        "HSH"
+      ]
+    }
+  }
+}

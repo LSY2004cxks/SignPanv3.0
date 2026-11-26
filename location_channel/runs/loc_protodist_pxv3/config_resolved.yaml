@@ -1,0 +1,182 @@
+seed: 42
+paths:
+  labels_csv: data/labels.csv
+  features_dir: data/features_px_v3
+  splits_dir: data/splits_18_5_5
+  location_labels: configs/location_labels.json
+  dataset_yaml: configs/dataset.yaml
+sampling:
+  num_frames: 24
+  max_frames: 120
+  use_all_frames: false
+  strategy: uniform
+pose:
+  device: cuda
+  config: null
+  checkpoint: null
+  score_thresh: 0.3
+  joint_names:
+  - nose
+  - left_eye
+  - right_eye
+  - left_ear
+  - right_ear
+  - left_shoulder
+  - right_shoulder
+  - left_elbow
+  - right_elbow
+  - left_wrist
+  - right_wrist
+  - left_hip
+  - right_hip
+  - left_knee
+  - right_knee
+  - left_ankle
+  - right_ankle
+  left_shoulder: left_shoulder
+  right_shoulder: right_shoulder
+  left_hip: left_hip
+  right_hip: right_hip
+  head: nose
+hand:
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  hand_center: wrist
+features:
+  include_dxy: true
+  include_dists: true
+  include_velocity: false
+  joint_distances:
+  - left_shoulder
+  - right_shoulder
+  - left_elbow
+  - right_elbow
+  - left_hip
+  - right_hip
+  - left_eye
+  - right_eye
+  - nose
+  - mouth_center
+training:
+  epochs: 80
+  batch_size: 32
+  lr: 0.0003
+  weight_smooth: 0.2
+  num_workers: 0
+  save_metric: macro_f1
+  pool: logsumexp
+model:
+  name: protodist
+  hidden_dim: 256
+  emb_dim: 256
+  dropout: 0.1
+  tau: 0.5
+  hand_rep: center
+  pool: logsumexp
+  anchors:
+    NC:
+      type: mid
+      a: left_shoulder
+      b: right_shoulder
+    FC:
+      type: joint
+      name: nose
+    FR:
+      type: joint
+      name: right_eye
+    FL:
+      type: joint
+      name: left_eye
+    EYR:
+      type: joint
+      name: right_eye
+    EYL:
+      type: joint
+      name: left_eye
+    EBR:
+      type: joint
+      name: right_eye
+    EBL:
+      type: joint
+      name: left_eye
+    CR:
+      type: joint
+      name: right_ear
+    CL:
+      type: joint
+      name: left_ear
+    NOC:
+      type: joint
+      name: nose
+    MC:
+      type: joint
+      name: nose
+    CC:
+      type: joint
+      name: nose
+    TTC:
+      type: torso_grid
+      row: top
+      col: center
+    TTR:
+      type: torso_grid
+      row: top
+      col: right
+    TTL:
+      type: torso_grid
+      row: top
+      col: left
+    TBC:
+      type: torso_grid
+      row: bottom
+      col: center
+    TBR:
+      type: torso_grid
+      row: bottom
+      col: right
+    TBL:
+      type: torso_grid
+      row: bottom
+      col: left
+    WL:
+      type: joint
+      name: left_hip
+    WR:
+      type: joint
+      name: right_hip
+    SL:
+      type: joint
+      name: left_shoulder
+    SR:
+      type: joint
+      name: right_shoulder
+    UAL:
+      type: segment_mid
+      a: left_shoulder
+      b: left_elbow
+    UAR:
+      type: segment_mid
+      a: right_shoulder
+      b: right_elbow
+    FAL:
+      type: segment_mid
+      a: left_elbow
+      b: left_wrist
+    FAR:
+      type: segment_mid
+      a: right_elbow
+      b: right_wrist
+    WIL:
+      type: joint
+      name: left_wrist
+    WIR:
+      type: joint
+      name: right_wrist
+    TL:
+      type: segment_mid
+      a: left_hip
+      b: left_knee
+    TR:
+      type: segment_mid
+      a: right_hip
+      b: right_knee

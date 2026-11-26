@@ -1,0 +1,36 @@
+# Dataset field mapping for mhsl-1.0-lite style JSON
+# Update paths to your dataset as needed.
+paths:
+  ann_dir: /home/yuan/桌面/SignPanv2.0/data28
+  video_root: /home/yuan/桌面/SignPanv2.0/data28
+  clips_root: null  # optional: if pre-cut clips exist, set to folder
+
+mapping:
+  signer_id_field: video.signer_id
+  video_id_field: video.video_id
+  video_path_field: video.path  # mhsl-1.0-lite: video.path
+  events_field: hands
+  left_hand_field: left
+  right_hand_field: right
+  event_id_field: event_id
+
+  # span fields (frame-based or time-based)
+  span_start_field: start_frame
+  span_end_field: end_frame
+  start_time_field: start_s
+  end_time_field: end_s
+  fps_field: video.fps
+
+  # location label: try in order
+  location_field_paths:
+    - anchors.start.location.label
+    - position.region
+
+label:
+  labels_config: configs/location_labels.json
+  ignore_labels:
+    - NOP
+    - NOH
+    - NOO
+    - NOM
+    - NOL

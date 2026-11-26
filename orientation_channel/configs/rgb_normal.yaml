@@ -1,0 +1,6 @@
+inherit: full.yaml
+model:
+  use_normal: true
+  use_geom: false
+  use_text: false
+  use_roi: true

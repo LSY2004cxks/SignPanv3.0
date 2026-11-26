@@ -1,0 +1,4 @@
+# Full model with skeleton Transformer
+inherit: full.yaml
+model:
+  geom_encoder_type: transformer

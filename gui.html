@@ -1,0 +1,1978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手语音系学参数识别与自动标注系统 SignPanv3.0</title>
+<link rel="stylesheet" href="/static/gui.css">
+
+</head>
+<body>
+
+<div class="container">
+    <main class="workspace">
+    <header>
+        <span class="header-kicker"><span class="dot"></span>SignPanv3.0</span>
+        <h1>手语音系学参数识别与自动标注系统</h1>
+    </header>
+      <div class="utility-bar">
+        <div class="utility-group">
+            <label for="segmentMode">事件切分</label>
+            <select id="segmentMode">
+                <option value="auto">BoundaryTCN，失败时使用标注边界</option>
+                <option value="model">仅 BoundaryTCN</option>
+                <option value="annotation">仅标注边界</option>
+            </select>
+        </div>
+        <div class="utility-group history-group">
+            <label for="historySelect">历史标注</label>
+            <select id="historySelect"><option value="">暂无已保存结果</option></select>
+            <button class="btn btn-secondary btn-small" onclick="loadHistory()">打开</button>
+            <button class="btn btn-danger btn-small" onclick="deleteHistory()">删除</button>
+            <button class="btn btn-quiet btn-small" id="historyPrev" onclick="changeHistoryPage(-1)">上一页</button>
+            <span class="history-page" id="historyPage">1 / 1</span>
+            <button class="btn btn-quiet btn-small" id="historyNext" onclick="changeHistoryPage(1)">下一页</button>
+            <button class="btn btn-quiet btn-small" onclick="refreshHistory()">刷新</button>
+            <a class="btn btn-quiet btn-small" href="/about">关于</a>
+            <a class="btn btn-quiet btn-small" href="/en">English</a>
+        </div>
+      </div>
+      <div class="app-layout">
+      <aside class="input-panel" id="inputPanel">
+        <div class="panel-heading">
+            <span class="panel-step">01</span>
+            <div><h2>输入视频</h2><p>选择本地视频文件</p></div>
+        </div>
+        <div class="upload-zone" id="uploadZone">
+            <div class="icon">MP4</div>
+            <p>拖拽视频到这里，或点击选择</p>
+            <p class="hint">支持 .mp4 / .mov / .avi，文件名不限</p>
+            <input type="file" id="fileInput" accept=".mp4,.mov,.avi" hidden>
+        </div>
+
+        <div class="video-preview" id="videoPreview" style="display:none;">
+            <video id="videoPlayer" controls></video>
+            <p class="video-name" id="videoName"></p>
+        </div>
+
+        <div class="controls-row">
+            <button class="btn btn-primary" id="predictBtn" disabled onclick="startPredict()">开始预测</button>
+            <button class="btn btn-secondary" id="manualSegBtn" disabled onclick="startManualSegmentation()">手动切分</button>
+            <button class="btn btn-secondary" onclick="resetAll()">重置</button>
+        </div>
+
+        <div class="progress-section" id="progressSection">
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">准备中...</p>
+        </div>
+      </aside>
+
+      <section class="result-panel">
+        <div class="panel-heading">
+            <span class="panel-step">02</span>
+            <div><h2>整句标注与人工校订</h2><p>查看并修订多层音系标注</p></div>
+        </div>
+        <div class="result-empty" id="resultEmpty">
+            <div class="empty-visual">SP</div>
+            <h3 id="emptyTitle">等待预测结果</h3>
+            <p id="emptyMessage">从左侧上传视频并开始预测，结果将在这里按事件展示。</p>
+            <div class="empty-channels">
+                <span>Handshape</span>
+                <span>Movement</span>
+                <span>Location</span>
+                <span>Orientation</span>
+            </div>
+        </div>
+        <div class="results" id="resultsSection">
+            <div class="results-header">
+                <h2>整句音系标注</h2>
+                <div class="results-actions">
+                    <button class="btn btn-primary btn-small" id="saveBtn" onclick="saveEdits()">保存修改</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('standard_json')">导出 JSON</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('csv')">导出 CSV</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('eaf')">导出 EAF</button>
+                </div>
+            </div>
+            <div class="summary-strip" id="resultSummary"></div>
+            <div class="results-list" id="resultsContent"></div>
+        </div>
+      </section>
+      </div>
+    <footer>
+        <span class="brand">手语音系学参数识别与自动标注系统 SignPanv3.0</span> · SignPanv3.0 · <a href="/about">关于</a>
+    </footer>
+    </main>
+</div>
+
+<script>
+/* ============================================================
+   业务逻辑（保持不变，仅做最小必要的结构适配）
+   ============================================================ */
+let currentTaskId = null;
+let pollInterval = null;
+let selectedFile = null;
+let currentResults = [];
+let hasUnsavedChanges = false;
+let previewUrl = null;
+let historyPage = 1;
+let historyPages = 1;
+let currentHistoryName = null;
+let currentAnnotationMeta = createAnnotationMeta();
+const CHANNEL_KEYS = ['handshape', 'movement', 'location', 'orientation'];
+const CHANNEL_COUNT = CHANNEL_KEYS.length;
+const STANDARD_LABELS = {
+    handshape: 'HA HBO HBY HCH HES HFF HJI HM HMQ HNG HNI HSE HNU HPJ HS HSA HSB HSC HSD HSF HSG HSH HSJ HSK HSL HSM HSO HSQ HSS HSU HSV HSW HSX HSY HWC HX HXX HYB HZH HSN HSP HST HTS HFY HLS HAS HSI HHE HT HLX HB HZ HFS HGG HW HC HTH HUN HMO NOH'.split(' '),
+    location: 'HT HTL HTR HD HDL HDR FC FL FR EYL EYR EBL EBR CL CR NOC LT LD MC CC NC SL SR TTL TTC TTR TML TMC TMR TBL TBC TBR WL WR ULL ULR UAL UAR WFL WFR WBL WBR FBL FBR FFL FFR LBW RBW LFW RFW H P PTO PTI PEO PEI PFO PFI PMO PHO PHI PIO PII PDO PDI PRO PRI PPO PPI OFP OFM PP PT MT MI MM MR MP FT FI FM RF PF NOL'.split(' '),
+    orientation: 'TB TU TL TLU AFB TD TR TRU TLD TRD NOO'.split(' '),
+    movement: 'CI ST CU HOLD NOM TMS TMC TMR TMH TMW TME TML TMA TMT TMN TMI'.split(' '),
+    facial: 'ebr ebf eow en cp nw mo mr mof lfr lr ltr mcf lv lpt ldb ls mct mcd tpc to tp th tl tc hts htf htb hf ht'.split(' '),
+    torso: 'tf b ll llt lr lrt c s n bf'.split(' ')
+};
+
+function createAnnotationMeta() {
+    return {
+        standard_version: '3.0',
+        revision_version: '1',
+        dominant_hand: 'right',
+        record_id: '',
+        annotator: '',
+        reviewer: '',
+        review_status: 'in_progress',
+        created_at: new Date().toISOString(),
+        nmf: {
+            status: 'observed_absent',
+            facial_events: [],
+            torso_events: []
+        }
+    };
+}
+
+const MIN_ANNOTATION_MS = 100;
+
+function isUnannotatedSpan(start, end) {
+    return Number(end) - Number(start) < MIN_ANNOTATION_MS;
+}
+
+function resultsForDisplay(results) {
+    return results.map((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        if (!isUnannotatedSpan(start, end)) return item;
+        const copy = JSON.parse(JSON.stringify(item));
+        Object.values(copy.channels || {}).forEach(channel => {
+            if (!channel || typeof channel !== 'object') return;
+            channel.prediction = {label: '', conf: null, topk: []};
+        });
+        return copy;
+    });
+}
+
+function intervalFor(item, index) {
+    const standard = item.standard || {};
+    if (Number.isFinite(Number(standard.start_ms)) &&
+        Number.isFinite(Number(standard.end_ms)) &&
+        Number(standard.start_ms) < Number(standard.end_ms)) {
+        return [Number(standard.start_ms), Number(standard.end_ms)];
+    }
+    const span = item.segmentation?.span || {};
+    const fps = Number(item.segmentation?.fps) || 30;
+    if (Number.isFinite(Number(span.start_frame)) &&
+        Number.isFinite(Number(span.end_frame))) {
+        return [
+            Math.round(Number(span.start_frame) * 1000 / fps),
+            Math.round(Number(span.end_frame) * 1000 / fps)
+        ];
+    }
+    return [index * 1000, (index + 1) * 1000];
+}
+
+function movementParts(label) {
+    const code = String(label || '').trim().toUpperCase();
+    if (!code || code === 'NOM') return ['NOM', 'NOM'];
+    if (code === 'HOLD') return ['HOLD', 'HOLD'];
+    if (code.startsWith('TM')) return ['HOLD', code];
+    if (['CI', 'ST', 'CU'].includes(code)) return [code, 'HOLD'];
+    return [code, 'HOLD'];
+}
+
+function ensureStandardMetadata(results) {
+    const dominant = currentAnnotationMeta.dominant_hand || 'right';
+    const prepared = results.map((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        const side = String(item.hand || '').toLowerCase();
+        item.standard = item.standard || {};
+        return {item, start, end, side};
+    }).filter(piece =>
+        piece.start < piece.end && (piece.side === 'left' || piece.side === 'right')
+    );
+
+    const resolve = list => {
+        const points = [...new Set(list.flatMap(piece => [piece.start, piece.end]))]
+            .sort((a, b) => a - b);
+        const pieces = [];
+        for (let index = 0; index < points.length - 1; index += 1) {
+            const left = points[index];
+            const right = points[index + 1];
+            const covering = list.filter(piece => piece.start <= left && piece.end >= right);
+            if (!covering.length) continue;
+            covering.sort((a, b) => b.start - a.start || (a.end - a.start) - (b.end - b.start));
+            const winner = covering[0];
+            const previous = pieces[pieces.length - 1];
+            if (previous && previous.item === winner.item && previous.end === left) {
+                previous.end = right;
+            } else {
+                pieces.push({item: winner.item, start: left, end: right, side: winner.side});
+            }
+        }
+        return pieces;
+    };
+
+    const resolved = [
+        ...resolve(prepared.filter(piece => piece.side === 'left')),
+        ...resolve(prepared.filter(piece => piece.side === 'right')),
+    ];
+    const points = [...new Set(resolved.flatMap(piece => [piece.start, piece.end]))]
+        .sort((a, b) => a - b);
+    const slices = [];
+    for (let index = 0; index < points.length - 1; index += 1) {
+        const left = points[index];
+        const right = points[index + 1];
+        const active = resolved.filter(piece => piece.start <= left && piece.end >= right);
+        if (!active.length) continue;
+        const signature = active.map(piece => `${piece.side}:${results.indexOf(piece.item)}`).sort().join('|');
+        const previous = slices[slices.length - 1];
+        if (previous && previous.signature === signature && previous.end === left) {
+            previous.end = right;
+        } else {
+            slices.push({start: left, end: right, signature, active});
+        }
+    }
+
+    const aligned = [];
+    slices.forEach((slice, segmentIndex) => {
+        const segmentId = `S${segmentIndex + 1}`;
+        slice.active
+            .slice()
+            .sort((a, b) => a.side.localeCompare(b.side))
+            .forEach(piece => {
+                const event = JSON.parse(JSON.stringify(piece.item));
+                const side = piece.side;
+                event.standard = event.standard || {};
+                if (!['H1', 'H2'].includes(event.standard.hand_role)) {
+                    event.standard.hand_role = side === dominant ? 'H1' : 'H2';
+                }
+                event.standard.segment_id = segmentId;
+                event.standard.start_ms = slice.start;
+                event.standard.end_ms = slice.end;
+                event.standard.participation = event.standard.participation || 'active';
+                const draft = event.segmentation?.source === 'unnumbered';
+                event.standard.annotation_status = event.standard.annotation_status
+                    || (draft ? 'uncertain' : 'observed');
+                aligned.push(event);
+            });
+    });
+    results.splice(0, results.length, ...aligned);
+}
+
+function ensureNmf() {
+    const current = currentAnnotationMeta.nmf;
+    const nmf = current && typeof current === 'object' ? current : {};
+    if (!Array.isArray(nmf.facial_events)) nmf.facial_events = [];
+    if (!Array.isArray(nmf.torso_events)) nmf.torso_events = [];
+    if (!['observed', 'observed_absent', 'unobservable', 'uncertain'].includes(nmf.status)) {
+        nmf.status = nmf.facial_events.length || nmf.torso_events.length
+            ? 'observed'
+            : 'observed_absent';
+    }
+    currentAnnotationMeta.nmf = nmf;
+    return nmf;
+}
+
+const zone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+zone.onclick = () => fileInput.click();
+zone.ondragover = e => { e.preventDefault(); zone.classList.add('dragover'); };
+zone.ondragleave = () => zone.classList.remove('dragover');
+zone.ondrop = e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = () => { if (fileInput.files.length) handleFile(fileInput.files[0]); };
+
+function handleFile(file) {
+    const allowed = ['.mp4','.mov','.avi'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!allowed.includes(ext)) { toast('请选择 .mp4 / .mov / .avi 格式', 'error'); return; }
+
+    selectedFile = file;
+    currentAnnotationMeta = createAnnotationMeta();
+    currentAnnotationMeta.record_id = file.name.replace(/\.[^.]+$/, '');
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    document.getElementById('videoPlayer').src = previewUrl;
+    document.getElementById('videoPreview').style.display = 'flex';
+    document.getElementById('inputPanel').classList.add('has-video');
+    document.getElementById('videoName').textContent = file.name;
+    document.getElementById('predictBtn').disabled = false;
+    const manualBtn = document.getElementById('manualSegBtn');
+    if (manualBtn) manualBtn.disabled = false;
+    toast('视频已加载: ' + file.name, 'success');
+}
+
+function startManualSegmentation() {
+    if (hasUnsavedChanges && !confirm('当前修改尚未保存，确定清空并重新开始手动切分吗？')) return;
+    if (!currentTaskId) {
+        currentTaskId = 'manual-' + Date.now().toString(36);
+    }
+    renderResults([]);
+    addSegmentAtMs(getPlayheadMs(), newSegmentHandMode);
+}
+
+function startPredict() {
+    if (!selectedFile) return;
+    if (hasUnsavedChanges && !confirm('当前修改尚未保存，确定开始新的预测吗？')) return;
+    currentHistoryName = null;
+    document.getElementById('predictBtn').disabled = true;
+    document.getElementById('progressSection').style.display = 'block';
+    document.getElementById('resultsSection').style.display = 'none';
+    showEmptyState('正在分析视频', '正在执行事件切分和四通道预测，请稍候。');
+    updateProgress(5, '上传视频中...');
+
+    const formData = new FormData();
+    formData.append('video', selectedFile);
+    formData.append('segment_mode', document.getElementById('segmentMode').value);
+
+    fetch('/upload', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('predictBtn').disabled = false;
+                showEmptyState('上传失败', data.error);
+                toast(data.error, 'error');
+                return;
+            }
+            currentTaskId = data.task_id;
+            updateProgress(15, '视频已接收，开始预处理...');
+            pollStatus();
+        })
+        .catch(err => {
+            document.getElementById('predictBtn').disabled = false;
+            showEmptyState('上传失败', String(err));
+            toast('上传失败: ' + err, 'error');
+        });
+}
+
+function pollStatus() {
+    pollInterval = setInterval(() => {
+        fetch('/status/' + currentTaskId)
+            .then(r => r.json())
+            .then(data => {
+                updateProgress(data.progress, statusText(data.status));
+                if (data.status === 'done') {
+                    clearInterval(pollInterval);
+                    updateProgress(100, '✅ 预测完成！');
+                    document.getElementById('predictBtn').disabled = false;
+                    if (data.annotation_meta && Object.keys(data.annotation_meta).length) {
+                        currentAnnotationMeta = {
+                            ...createAnnotationMeta(),
+                            ...data.annotation_meta
+                        };
+                    }
+                    renderResults(data.result);
+                    toast('预测完成！', 'success');
+                } else if (data.status === 'error') {
+                    clearInterval(pollInterval);
+                    updateProgress(0, '自动切分失败，已开启手动切分模式');
+                    document.getElementById('predictBtn').disabled = false;
+                    renderResults([]);
+                    toast((data.error || '自动切分未检出事件') + ' · 可直接在时间轴手动新建切分', 'error');
+                }
+            })
+            .catch(error => {
+                clearInterval(pollInterval);
+                document.getElementById('predictBtn').disabled = false;
+                showEmptyState('连接中断', '无法获取任务状态，请检查后端服务。');
+                toast('状态查询失败: ' + error, 'error');
+            });
+    }, 1000);
+}
+
+function updateProgress(pct, text) {
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressText').textContent = text;
+}
+
+function statusText(s) {
+    return {queued:'排队中...', processing:'处理中...', done:'完成', error:'失败'}[s] || s;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[ch]);
+}
+
+function showEmptyState(title, message) {
+    document.querySelector('.result-panel').classList.remove('result-ready');
+    document.getElementById('resultEmpty').style.display = 'grid';
+    document.getElementById('emptyTitle').textContent = title;
+    document.getElementById('emptyMessage').textContent = message;
+}
+
+let newSegmentHandMode = 'both';
+
+function inferDefaultFps(results = currentResults) {
+    for (const item of results || []) {
+        const fps = Number(item?.segmentation?.fps || item?.fps);
+        if (Number.isFinite(fps) && fps > 0) return fps;
+    }
+    return 30;
+}
+
+function syncEventSpanFromMs(event, fps = inferDefaultFps()) {
+    if (!event || !event.standard) return;
+    const startMs = Number(event.standard.start_ms);
+    const endMs = Number(event.standard.end_ms);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+    event.segmentation = event.segmentation || {};
+    const actualFps = Number(event.segmentation.fps) || fps || 30;
+    event.segmentation.fps = actualFps;
+    const startFrame = Math.max(0, Math.round(startMs * actualFps / 1000));
+    const endFrame = Math.max(startFrame + 1, Math.round(endMs * actualFps / 1000));
+    event.segmentation.span = {start_frame: startFrame, end_frame: endFrame};
+}
+
+function nextEventIdForHand(hand, results = currentResults) {
+    const prefix = String(hand || 'right').toLowerCase() === 'left' ? 'L' : 'R';
+    const pattern = new RegExp(`^${prefix}_Event_(\\d+)$`, 'i');
+    let maxNum = 0;
+    (results || []).forEach(item => {
+        const match = String(item?.event_id || '').match(pattern);
+        if (match) maxNum = Math.max(maxNum, Number(match[1]) || 0);
+    });
+    return `${prefix}_Event_${maxNum + 1}`;
+}
+
+function createManualEvent({hand, startMs, endMs, templateEvent = null, source = 'manual'}) {
+    const normalizedHand = String(hand || 'right').toLowerCase() === 'left' ? 'left' : 'right';
+    const dominant = currentAnnotationMeta.dominant_hand || 'right';
+    const role = normalizedHand === dominant ? 'H1' : 'H2';
+    const ref = templateEvent || currentResults[0] || {};
+    const signerId = ref.signer_id || 'S000';
+    const videoId = ref.video_id || (currentAnnotationMeta.record_id ? `V_${currentAnnotationMeta.record_id}` : 'V000');
+    const eventId = nextEventIdForHand(normalizedHand);
+    const sampleId = `${signerId}_${videoId}_${eventId}_${normalizedHand.toUpperCase()}`;
+    const defaultLabels = {
+        handshape: 'NOH',
+        location: 'NOL',
+        orientation: 'NOO',
+        movement: 'NOM'
+    };
+    const channels = {};
+    CHANNEL_KEYS.forEach(key => {
+        if (templateEvent?.channels?.[key]) {
+            const copied = JSON.parse(JSON.stringify(templateEvent.channels[key]));
+            copied.event_id = eventId;
+            copied.sample_id = sampleId;
+            channels[key] = copied;
+        } else {
+            channels[key] = {
+                schema: 'sign_phonology_v1',
+                sample_id: sampleId,
+                event_id: eventId,
+                channel: key,
+                prediction: {
+                    label: defaultLabels[key],
+                    conf: 1.0,
+                    topk: [{label: defaultLabels[key], prob: 1.0}]
+                },
+                metadata: {
+                    signer_id: signerId,
+                    video_id: videoId,
+                    hand: normalizedHand,
+                    source: 'human_annotation',
+                    human_modified: false
+                },
+                status: {code: 'OK', message: '手动切分待标注'}
+            };
+        }
+    });
+    const created = {
+        schema: 'sign_phonology_v1',
+        split: 'test',
+        sample_id: sampleId,
+        event_id: eventId,
+        signer_id: signerId,
+        video_id: videoId,
+        hand: normalizedHand,
+        channels,
+        segmentation: {
+            source,
+            fps: inferDefaultFps(),
+            span: {start_frame: 0, end_frame: 1}
+        },
+        standard: {
+            start_ms: Math.max(0, Math.round(Number(startMs) || 0)),
+            end_ms: Math.max(MIN_ANNOTATION_MS, Math.round(Number(endMs) || 800)),
+            hand_role: role,
+            participation: templateEvent?.standard?.participation || 'active',
+            annotation_status: templateEvent?.standard?.annotation_status || 'observed',
+            source: 'human_annotation',
+            modified_at: new Date().toISOString()
+        }
+    };
+    syncEventSpanFromMs(created);
+    return created;
+}
+
+function collectTimelineSegments(results = currentResults) {
+    const map = new Map();
+    (results || []).forEach((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        if (isUnannotatedSpan(start, end)) return;
+        const id = item.standard?.segment_id || `S${index + 1}`;
+        const entry = map.get(id) || {
+            id,
+            start,
+            end,
+            roles: new Set(),
+            hands: new Set(),
+            indices: [],
+            events: []
+        };
+        entry.start = Math.min(entry.start, start);
+        entry.end = Math.max(entry.end, end);
+        if (item.standard?.hand_role) entry.roles.add(item.standard.hand_role);
+        if (item.hand) entry.hands.add(String(item.hand).toLowerCase());
+        entry.indices.push(index);
+        entry.events.push(item);
+        map.set(id, entry);
+    });
+    return [...map.values()].sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function getPlayheadMs() {
+    const video = document.getElementById('videoPlayer');
+    return Math.max(0, Math.round(Number(video?.currentTime || 0) * 1000));
+}
+
+function findActiveSegment(ms = getPlayheadMs()) {
+    const segments = collectTimelineSegments();
+    let found = segments.find(seg => ms >= seg.start && ms < seg.end);
+    if (!found) {
+        found = segments.find(seg => ms === seg.end && seg.end > seg.start);
+    }
+    return found || null;
+}
+
+function resolveHandsForMode(mode = newSegmentHandMode) {
+    const dominant = currentAnnotationMeta.dominant_hand || 'right';
+    const other = dominant === 'right' ? 'left' : 'right';
+    if (mode === 'H1') return [dominant];
+    if (mode === 'H2') return [other];
+    if (mode === 'left' || mode === 'right') return [mode];
+    return ['left', 'right'];
+}
+
+function addSegmentAtMs(targetMs = getPlayheadMs(), handMode = newSegmentHandMode) {
+    closeTimelineContextMenu();
+    const hands = resolveHandsForMode(handMode);
+    const segments = collectTimelineSegments();
+    let startMs = Math.max(0, Math.round(Number(targetMs) || 0));
+    const insideSeg = segments.find(seg => startMs >= seg.start && startMs < seg.end);
+
+    if (insideSeg) {
+        const missingHands = hands.filter(h => !insideSeg.hands.has(h));
+        if (missingHands.length > 0) {
+            missingHands.forEach(hand => {
+                currentResults.push(createManualEvent({
+                    hand,
+                    startMs: insideSeg.start,
+                    endMs: insideSeg.end,
+                    source: 'manual_add'
+                }));
+            });
+            hasUnsavedChanges = true;
+            renderResults(currentResults, true);
+            syncUtteranceToPlayhead(insideSeg.start);
+            toast(`已在 ${insideSeg.id} 补齐手部事件`, 'success');
+            return;
+        }
+        startMs = insideSeg.end;
+    }
+
+    const video = document.getElementById('videoPlayer');
+    const videoDurationMs = Number(video?.duration) * 1000;
+    const nextSeg = segments.find(seg => seg.start > startMs);
+    let endMs = startMs + 800;
+    if (nextSeg && nextSeg.start - startMs >= MIN_ANNOTATION_MS) {
+        endMs = Math.min(endMs, nextSeg.start);
+    } else if (nextSeg && nextSeg.start - startMs < MIN_ANNOTATION_MS) {
+        const lastEnd = segments.length ? segments[segments.length - 1].end : startMs;
+        startMs = lastEnd;
+        endMs = startMs + 800;
+    }
+    if (Number.isFinite(videoDurationMs) && videoDurationMs > startMs + MIN_ANNOTATION_MS) {
+        endMs = Math.min(endMs, Math.round(videoDurationMs));
+    }
+    if (endMs - startMs < MIN_ANNOTATION_MS) {
+        endMs = startMs + Math.max(MIN_ANNOTATION_MS, 500);
+    }
+
+    hands.forEach(hand => {
+        currentResults.push(createManualEvent({
+            hand,
+            startMs,
+            endMs,
+            source: 'manual_add'
+        }));
+    });
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    if (video && Number.isFinite(Number(video.duration))) {
+        video.currentTime = startMs / 1000;
+    }
+    syncUtteranceToPlayhead(startMs);
+    toast(`已新建切分段 (${formatCutLabel(startMs)}–${formatCutLabel(endMs)})`, 'success');
+}
+
+function splitSegmentAtMs(splitMs = null, segmentId = null) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const targetSeg = segmentId
+        ? segments.find(seg => seg.id === segmentId)
+        : findActiveSegment(splitMs ?? getPlayheadMs());
+    if (!targetSeg) {
+        toast('请先将播放头定位到某个切分段内，或在切分段上点击拆分', 'error');
+        return;
+    }
+    let cutMs = splitMs !== null && Number.isFinite(Number(splitMs))
+        ? Math.round(Number(splitMs))
+        : getPlayheadMs();
+    if (cutMs <= targetSeg.start + MIN_ANNOTATION_MS - 1 || cutMs >= targetSeg.end - MIN_ANNOTATION_MS + 1) {
+        cutMs = Math.round((targetSeg.start + targetSeg.end) / 2);
+    }
+    if (cutMs - targetSeg.start < MIN_ANNOTATION_MS || targetSeg.end - cutMs < MIN_ANNOTATION_MS) {
+        toast('当前切分段过短（拆分后两段均需 ≥ 100 ms），无法继续拆分', 'error');
+        return;
+    }
+
+    const addedEvents = [];
+    targetSeg.events.forEach(event => {
+        event.standard = event.standard || {};
+        event.standard.start_ms = targetSeg.start;
+        event.standard.end_ms = cutMs;
+        event.standard.modified_at = new Date().toISOString();
+        event.standard.source = 'human_annotation';
+        syncEventSpanFromMs(event);
+        addedEvents.push(createManualEvent({
+            hand: event.hand,
+            startMs: cutMs,
+            endMs: targetSeg.end,
+            templateEvent: event,
+            source: 'manual_split'
+        }));
+    });
+    currentResults.push(...addedEvents);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    const video = document.getElementById('videoPlayer');
+    if (video && Number.isFinite(Number(video.duration))) {
+        video.currentTime = cutMs / 1000;
+    }
+    syncUtteranceToPlayhead(cutMs);
+    toast(`已在 ${formatCutLabel(cutMs)} 处拆分切分段`, 'success');
+}
+
+function mergeSegmentWithNext(segmentId = null) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const currentSeg = segmentId
+        ? segments.find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!currentSeg) {
+        toast('请先选择或定位到要合并的切分段', 'error');
+        return;
+    }
+    const segIdx = segments.findIndex(seg => seg.id === currentSeg.id);
+    const nextSeg = segIdx >= 0 ? segments[segIdx + 1] : null;
+    if (!nextSeg) {
+        toast('当前切分段已是最后一段，无法向下合并', 'error');
+        return;
+    }
+    const mergedStart = currentSeg.start;
+    const mergedEnd = nextSeg.end;
+    const keptHands = new Set();
+
+    currentSeg.events.forEach(event => {
+        const hand = String(event.hand || '').toLowerCase();
+        keptHands.add(hand);
+        event.standard = event.standard || {};
+        event.standard.start_ms = mergedStart;
+        event.standard.end_ms = mergedEnd;
+        event.standard.modified_at = new Date().toISOString();
+        event.standard.source = 'human_annotation';
+        syncEventSpanFromMs(event);
+    });
+
+    const toRemove = new Set();
+    nextSeg.events.forEach(event => {
+        const hand = String(event.hand || '').toLowerCase();
+        if (!keptHands.has(hand)) {
+            keptHands.add(hand);
+            event.standard = event.standard || {};
+            event.standard.start_ms = mergedStart;
+            event.standard.end_ms = mergedEnd;
+            event.standard.modified_at = new Date().toISOString();
+            event.standard.source = 'human_annotation';
+            syncEventSpanFromMs(event);
+        } else {
+            toRemove.add(event);
+        }
+    });
+
+    currentResults = currentResults.filter(item => !toRemove.has(item));
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    syncUtteranceToPlayhead(mergedStart);
+    toast(`已合并 ${currentSeg.id} 与 ${nextSeg.id}`, 'success');
+}
+
+function addMissingHandToSegment(segmentId) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const targetSeg = segments.find(seg => seg.id === segmentId) || findActiveSegment();
+    if (!targetSeg) return;
+    const missing = ['left', 'right'].filter(h => !targetSeg.hands.has(h));
+    if (!missing.length) {
+        targetSeg.events.forEach(ev => {
+            if (ev.standard) ev.standard.participation = 'active';
+        });
+        hasUnsavedChanges = true;
+        renderResults(currentResults, true);
+        toast(`${targetSeg.id} 左右手均已激活`, 'success');
+        return;
+    }
+    missing.forEach(hand => {
+        currentResults.push(createManualEvent({
+            hand,
+            startMs: targetSeg.start,
+            endMs: targetSeg.end,
+            source: 'manual_add'
+        }));
+    });
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    syncUtteranceToPlayhead(targetSeg.start);
+    toast(`已为 ${targetSeg.id} 补齐另一只手`, 'success');
+}
+
+function deleteSegmentById(segmentId = null) {
+    closeTimelineContextMenu();
+    const targetSeg = segmentId
+        ? collectTimelineSegments().find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!targetSeg) {
+        toast('请先将播放头移到要删除的切分段内', 'error');
+        return;
+    }
+    currentResults = currentResults.filter(item => item.standard?.segment_id !== targetSeg.id);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    toast(`已删除切分段 ${targetSeg.id}`, 'success');
+}
+
+function deleteHandEvent(eventIndex) {
+    closeTimelineContextMenu();
+    const target = currentResults[eventIndex];
+    if (!target) return;
+    const label = `${target.standard?.hand_role || target.hand} · ${target.standard?.segment_id || ''}`;
+    currentResults.splice(eventIndex, 1);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    toast(`已删除手部事件 ${label}`, 'success');
+}
+
+async function repredictSegment(segmentId = null) {
+    closeTimelineContextMenu();
+    if (!currentTaskId) {
+        toast('当前没有关联任务，无法调用后端重算', 'error');
+        return;
+    }
+    const targetSeg = segmentId
+        ? collectTimelineSegments().find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!targetSeg) {
+        toast('请先定位到要重算的切分段', 'error');
+        return;
+    }
+    toast(`正在重算 ${targetSeg.id} 的四通道预测...`, 'success');
+    try {
+        const response = await fetch(`/api/repredict/${encodeURIComponent(currentTaskId)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                result: currentResults,
+                annotation_meta: currentAnnotationMeta,
+                segment_id: targetSeg.id
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '重算失败');
+        currentResults = data.result || currentResults;
+        hasUnsavedChanges = true;
+        renderResults(currentResults, true);
+        syncUtteranceToPlayhead(targetSeg.start);
+        toast(`${targetSeg.id} 四通道预测已更新`, 'success');
+    } catch (error) {
+        toast('重算提示: ' + error.message, 'error');
+    }
+}
+
+function renderResults(results, preserveState = false) {
+    if (!preserveState) {
+        currentResults = JSON.parse(JSON.stringify(results || []));
+        hasUnsavedChanges = false;
+    }
+    results = currentResults;
+    ensureStandardMetadata(results);
+    ensureNmf();
+    document.querySelector('.result-panel').classList.add('result-ready');
+    document.getElementById('resultEmpty').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'block';
+    const container = document.getElementById('resultsContent');
+    container.innerHTML = '';
+    if (!preserveState) {
+        container.scrollTop = 0;
+        container.scrollLeft = 0;
+    }
+
+    renderSummary(results);
+
+    if (!results || results.length === 0) {
+        container.innerHTML = `
+            ${renderStandardPanel()}
+            ${renderTimeline(results)}
+            <div class="empty-state">
+                <div class="icon">—</div>
+                <p>当前暂无切分段</p>
+                <p class="hint">可在上方时间轴点击“+ 在播放头新建”、双击时间轴空白轨道，或点击下方按钮手动添加切分段。</p>
+                <div style="margin-top:12px;">
+                    <button type="button" class="btn btn-primary btn-small" onclick="addSegmentAtMs(getPlayheadMs(), newSegmentHandMode)">+ 在当前播放位置新建切分段</button>
+                </div>
+            </div>
+            ${renderNmfPanel()}`;
+        return;
+    }
+
+    const tiers = [
+        {key: 'handshape', name: '手形', english: 'Handshape', kind: 'channel', source: 'handshape'},
+        {key: 'location', name: '位置', english: 'Location', kind: 'channel', source: 'location'},
+        {key: 'orientation', name: '手掌朝向', english: 'Orientation', kind: 'channel', source: 'orientation'},
+        {key: 'movement', name: '运动', english: 'Movement', kind: 'channel', source: 'movement'},
+        {key: 'participation', name: '参与状态', english: 'Participation', kind: 'participation'},
+        {key: 'annotation_status', name: '观察状态', english: 'Status', kind: 'status'},
+    ];
+    const handCode = item => {
+        const hand = String(item.hand || '').toLowerCase();
+        return hand === 'left' ? 'L' : hand === 'right' ? 'R' : '—';
+    };
+    const annotationValue = (item, tier) => tier.kind === 'channel'
+        ? item.channels?.[tier.source]?.prediction?.label || '—'
+        : item.standard?.[tier.key] || '—';
+
+    const segmentsMap = new Map();
+    results.forEach(item => {
+        const sid = item.standard?.segment_id;
+        if (!sid) return;
+        const set = segmentsMap.get(sid) || new Set();
+        set.add(String(item.hand || '').toLowerCase());
+        segmentsMap.set(sid, set);
+    });
+
+    const sequence = results.map((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        if (isUnannotatedSpan(start, end)) return '';
+        const movement = movementParts(annotationValue(item, tiers[3]));
+        const body = `${escapeHtml(item.standard.segment_id)} ·
+            HS=${escapeHtml(annotationValue(item, tiers[0]))} ·
+            LOC=${escapeHtml(annotationValue(item, tiers[1]))} ·
+            ORI=${escapeHtml(annotationValue(item, tiers[2]))} ·
+            PATH=${escapeHtml(movement[0])} ·
+            LOCAL=${escapeHtml(movement[1])}`;
+        return `
+        <span class="utterance-token"
+            data-segment="${escapeHtml(item.standard.segment_id)}"
+            data-start="${start}" data-end="${end}">
+            <span class="token-hand">${escapeHtml(item.standard.hand_role)} · ${handCode(item)}</span>
+            ${body}
+        </span>`;
+    }).join('');
+
+    const header = results.map((item, index) => {
+        const span = item.segmentation?.span || {};
+        const range = span.start_frame !== undefined
+            ? `${span.start_frame}–${span.end_frame}`
+            : '—';
+        const [startMs, endMs] = intervalFor(item, index);
+        if (isUnannotatedSpan(startMs, endMs)) return '';
+        const segId = item.standard.segment_id;
+        const columnTitle = `${item.standard.hand_role} · ${segId}`;
+        const hasBothHands = (segmentsMap.get(segId)?.size || 0) >= 2;
+        return `<th scope="col" data-segment="${escapeHtml(segId)}"
+            data-start="${startMs}" data-end="${endMs}">
+            <span class="event-column-title">${escapeHtml(columnTitle)}</span>
+            <span class="event-column-meta">${handCode(item)}手 · ${escapeHtml(item.event_id || `E${index + 1}`)} · 帧 ${escapeHtml(range)}</span>
+            <div class="time-editors">
+                <input type="number" value="${item.standard.start_ms}" min="0"
+                    title="起始时间（毫秒）" aria-label="起始时间（毫秒）"
+                    onchange="editStandard(${index}, 'start_ms', this.value, true)">
+                <input type="number" value="${item.standard.end_ms}" min="1"
+                    title="结束时间（毫秒）" aria-label="结束时间（毫秒）"
+                    onchange="editStandard(${index}, 'end_ms', this.value, true)">
+            </div>
+            <div class="column-seg-actions">
+                <button type="button" class="col-seg-btn" title="在播放头或中点拆分此切分段" onclick="splitSegmentAtMs(null, '${escapeHtml(segId)}')">✂ 拆分</button>
+                <button type="button" class="col-seg-btn" title="与下一切分段合并" onclick="mergeSegmentWithNext('${escapeHtml(segId)}')">⇄ 合并</button>
+                ${!hasBothHands ? `<button type="button" class="col-seg-btn" title="为该切分段补齐另一只手" onclick="addMissingHandToSegment('${escapeHtml(segId)}')">+ 补手</button>` : ''}
+                <button type="button" class="col-seg-btn" title="根据当前起止时间重算该段四通道预测" onclick="repredictSegment('${escapeHtml(segId)}')">⟳ 重算</button>
+                ${hasBothHands ? `<button type="button" class="col-seg-btn danger" title="仅删除当前这只手的事件" onclick="deleteHandEvent(${index})">× 删此手</button>` : ''}
+                <button type="button" class="col-seg-btn danger" title="删除整个切分段 ${escapeHtml(segId)}" onclick="deleteSegmentById('${escapeHtml(segId)}')">🗑 删整段</button>
+            </div>
+        </th>`;
+    }).join('');
+
+    const rows = tiers.map(tier => {
+        const cells = results.map((item, eventIndex) => {
+            const [cellStart, cellEnd] = intervalFor(item, eventIndex);
+            if (isUnannotatedSpan(cellStart, cellEnd)) return '';
+            const channel = item.channels?.[tier.source] || {};
+            const prediction = channel.prediction || {};
+            const metadata = channel.metadata || {};
+            const confidence = Number(prediction.conf);
+            const confidenceText = Number.isFinite(confidence)
+                ? `${(confidence * 100).toFixed(1)}%`
+                : '—';
+            const modified = Boolean(metadata.human_modified);
+            const candidateItems = (prediction.topk || []).length
+                ? prediction.topk
+                : (prediction.label
+                    ? [{label: prediction.label, prob: prediction.conf}]
+                    : []);
+            const candidates = candidateItems
+                .map(candidate => {
+                    const probability = Number(candidate.prob);
+                    const probabilityText = Number.isFinite(probability)
+                        ? `${(probability * 100).toFixed(1)}%`
+                        : '—';
+                    return `<option value="${escapeHtml(candidate.label)}">${escapeHtml(candidate.label)} · 置信度 ${probabilityText}</option>`;
+                })
+                .join('');
+            const source = metadata.source || channel.status?.message || 'unknown';
+            const segmentAttr = ` data-segment="${escapeHtml(item.standard.segment_id)}" data-start="${cellStart}" data-end="${cellEnd}"`;
+            if (tier.kind === 'participation') {
+                return `<td${segmentAttr}><select class="standard-cell-select"
+                    onchange="editStandard(${eventIndex}, 'participation', this.value)">
+                    <option value="active" ${item.standard.participation === 'active' ? 'selected' : ''}>active · 参与</option>
+                    <option value="inactive" ${item.standard.participation === 'inactive' ? 'selected' : ''}>inactive · 未参与</option>
+                </select></td>`;
+            }
+            if (tier.kind === 'status') {
+                return `<td${segmentAttr}><select class="standard-cell-select"
+                    onchange="editStandard(${eventIndex}, 'annotation_status', this.value)">
+                    ${[
+                        ['observed', 'observed · 已观察'],
+                        ['unobservable', 'unobservable · 不可观察'],
+                        ['uncertain', 'uncertain · 无法确定']
+                    ].map(([value, text]) => `<option value="${value}" ${item.standard.annotation_status === value ? 'selected' : ''}>${text}</option>`).join('')}
+                </select></td>`;
+            }
+            const value = tier.kind === 'channel'
+                ? prediction.label || ''
+                : item.standard[tier.key] || '';
+            const editor = tier.kind === 'channel'
+                ? `editLabel(${eventIndex}, '${tier.source}', this.value)`
+                : `editStandard(${eventIndex}, '${tier.key}', this.value)`;
+            return `<td${segmentAttr} title="${escapeHtml(source)}">
+                <input class="matrix-editor" list="labels-${tier.source}"
+                    value="${escapeHtml(value)}"
+                    aria-label="${tier.name} 规范符号"
+                    onchange="${editor}">
+                <select class="candidate-select"
+                    aria-label="${tier.name} 候选预测"
+                    onchange="${tier.kind === 'channel'
+                        ? `selectCandidateFromDropdown(${eventIndex}, '${tier.source}', this)`
+                        : `selectStandardCandidate(${eventIndex}, '${tier.key}', this)`}">
+                    <option value="">候选预测：标签 · 置信度</option>
+                    ${candidates}
+                </select>
+                <div class="matrix-meta">
+                    <span>${confidenceText}</span>
+                    <span class="${modified ? 'reviewed' : ''}">${modified ? '人工校订' : '模型建议'}</span>
+                </div>
+            </td>`;
+        }).join('');
+        return `<tr>
+            <th scope="row"><span class="tier-label ${tier.source || tier.key}">${tier.name}</span>
+                <span class="tier-note">${tier.english}</span></th>
+            ${cells}
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        ${renderStandardPanel()}
+        ${renderTimeline(results)}
+        <section class="utterance-overview">
+            <h3>整句标注序列（规范 v3.0 · H1/H2）</h3>
+            <p class="utterance-now" id="utteranceNow"></p>
+            <div class="utterance-sequence" id="utteranceSequence">${sequence}</div>
+        </section>
+        <div class="annotation-matrix-wrap">
+            <table class="annotation-matrix">
+                <thead><tr><th scope="col">标注层</th>${header}</tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+        ${Object.entries(STANDARD_LABELS).map(([key, values]) =>
+            `<datalist id="labels-${key}">${values.map(value => `<option value="${value}"></option>`).join('')}</datalist>`
+        ).join('')}
+        ${renderNmfPanel()}
+        <details class="matrix-details">
+            <summary>查看技术元数据</summary>
+            <pre>${escapeHtml(JSON.stringify(resultsForDisplay(results), null, 2))}</pre>
+        </details>`;
+    syncUtteranceToPlayhead(Number(document.getElementById('videoPlayer').currentTime || 0) * 1000);
+}
+
+function renderStandardPanel() {
+    const meta = currentAnnotationMeta;
+    return `<details class="standard-panel">
+        <summary>标注规范 v3.0 · 记录与复核信息</summary>
+        <div class="standard-grid">
+            <div class="standard-field"><label>记录编号 record_id</label>
+                <input value="${escapeHtml(meta.record_id || '')}" onchange="editMeta('record_id', this.value)"></div>
+            <div class="standard-field"><label>主手 Dominant Hand</label>
+                <select onchange="editMeta('dominant_hand', this.value)">
+                    <option value="right" ${meta.dominant_hand === 'right' ? 'selected' : ''}>右手（H1）</option>
+                    <option value="left" ${meta.dominant_hand === 'left' ? 'selected' : ''}>左手（H1）</option>
+                </select></div>
+            <div class="standard-field"><label>标注员 Annotator</label>
+                <input value="${escapeHtml(meta.annotator || '')}" onchange="editMeta('annotator', this.value)"></div>
+            <div class="standard-field"><label>复核员 Reviewer</label>
+                <input value="${escapeHtml(meta.reviewer || '')}" onchange="editMeta('reviewer', this.value)"></div>
+            <div class="standard-field"><label>修订版本</label>
+                <input value="${escapeHtml(meta.revision_version || '1')}" onchange="editMeta('revision_version', this.value)"></div>
+            <div class="standard-field"><label>复核状态</label>
+                <select onchange="editMeta('review_status', this.value)">
+                    <option value="in_progress" ${meta.review_status === 'in_progress' ? 'selected' : ''}>标注中</option>
+                    <option value="pending_review" ${meta.review_status === 'pending_review' ? 'selected' : ''}>待复核</option>
+                    <option value="reviewed" ${meta.review_status === 'reviewed' ? 'selected' : ''}>已复核</option>
+                    <option value="adjudicated" ${meta.review_status === 'adjudicated' ? 'selected' : ''}>已仲裁</option>
+                </select></div>
+            <p class="standard-help">每个片段记录一个手形、一个位置、一个朝向和一个运动。短于 0.1 秒的切段不在时间轴和预测表里显示，也不写入识别结果。面部和躯干按自己的起止时间另记。H1/H2 按主手确定，时间单位是毫秒。</p>
+        </div>
+    </details>`;
+}
+
+function formatCutLabel(ms) {
+    return `${(Number(ms) / 1000).toFixed(2)}s`;
+}
+
+function syncUtteranceToPlayhead(currentMs) {
+    const ms = Number(currentMs);
+    const tokens = [...document.querySelectorAll('.utterance-token')];
+    const status = document.getElementById('utteranceNow');
+    if (!Number.isFinite(ms)) {
+        if (status) status.textContent = '';
+        return;
+    }
+    const active = new Set();
+    const markInside = (includeEndpoint) => {
+        tokens.forEach(token => {
+            const start = Number(token.dataset.start);
+            const end = Number(token.dataset.end);
+            const inside = ms >= start && ms < end;
+            const atEnd = includeEndpoint && ms === end && end > start;
+            if (inside || atEnd) active.add(token.dataset.segment);
+        });
+    };
+    markInside(false);
+    if (!active.size) markInside(true);
+    const showSegment = segmentId => active.has(segmentId);
+    tokens.forEach(token => {
+        token.classList.toggle('is-idle', !showSegment(token.dataset.segment));
+    });
+    document.querySelectorAll('.annotation-matrix [data-segment]').forEach(node => {
+        node.classList.toggle('is-idle', !showSegment(node.dataset.segment));
+    });
+    document.querySelectorAll('.timeline-tier-block[data-segment]').forEach(node => {
+        node.classList.toggle('is-active', showSegment(node.dataset.segment));
+    });
+    if (!status) return;
+    if (!active.size) {
+        status.textContent = `当前时间 ${formatCutLabel(ms)} 不在切分段内（可按 N 或点击“+ 在播放头新建”在此处添加切分）`;
+        status.classList.add('is-gap');
+        return;
+    }
+    const parts = [...active].map(id => {
+        const sample = tokens.find(token => token.dataset.segment === id);
+        return `${id} · ${formatCutLabel(sample.dataset.start)}–${formatCutLabel(sample.dataset.end)}`;
+    });
+    status.textContent = `当前切分段 ${parts.join('；')}`;
+    status.classList.remove('is-gap');
+}
+
+function renderTimeline(results) {
+    const videoPlayer = document.getElementById('videoPlayer');
+    const annotationEnd = Math.max(
+        1000,
+        ...(results || []).map((item, index) => intervalFor(item, index)[1])
+    );
+    const videoDurationMs = Number(videoPlayer.duration) * 1000;
+    const maximum = Math.max(
+        Math.ceil(annotationEnd / 1000) * 1000,
+        Number.isFinite(videoDurationMs) && videoDurationMs > 0 ? Math.round(videoDurationMs) : 3000
+    );
+    const cutTimes = [];
+    const seenCuts = new Set();
+    (results || []).forEach((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        [start, end].forEach(value => {
+            const ms = Math.round(Number(value));
+            if (!Number.isFinite(ms) || ms < 0 || ms > maximum || seenCuts.has(ms)) return;
+            seenCuts.add(ms);
+            cutTimes.push(ms);
+        });
+    });
+    cutTimes.sort((a, b) => a - b);
+    const scale = cutTimes.map(value => {
+        const percent = value / maximum * 100;
+        const edge = percent <= 6 ? 'first' : percent >= 94 ? 'last' : '';
+        return `<span class="timeline-scale-mark ${edge}"
+            style="left:${percent}%" title="${value} ms">${formatCutLabel(value)}</span>`;
+    }).join('');
+    const currentMs = Math.min(
+        maximum,
+        Math.max(0, Number(videoPlayer.currentTime || 0) * 1000)
+    );
+    const progressPercent = currentMs / maximum * 100;
+
+    const segments = new Map();
+    (results || []).forEach((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        const id = item.standard.segment_id;
+        const segment = segments.get(id) || {
+            id, start, end, roles: new Set(), firstIndex: index
+        };
+        segment.start = Math.min(segment.start, start);
+        segment.end = Math.max(segment.end, end);
+        segment.roles.add(item.standard.hand_role);
+        segments.set(id, segment);
+    });
+    const visibleSegments = [...segments.values()].filter(segment =>
+        !isUnannotatedSpan(segment.start, segment.end)
+    );
+    const visibleHands = (results || []).filter((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        return !isUnannotatedSpan(start, end);
+    });
+    const segmentBlocks = visibleSegments.map(segment => {
+        const left = Math.max(0, segment.start / maximum * 100);
+        const width = Math.max(0.7, (segment.end - segment.start) / maximum * 100);
+        const roles = [...segment.roles].sort().join('+');
+        const label = `${segment.id} · ${roles}`;
+        return `<button class="timeline-tier-block segment-block"
+            data-segment="${escapeHtml(segment.id)}"
+            data-start="${segment.start}" data-end="${segment.end}"
+            style="left:${left}%;width:${width}%"
+            title="${escapeHtml(label)} · ${segment.start}-${segment.end} ms（左右边缘可拖拽调整边界，右键打开切分菜单）"
+            onclick="seekToEvent(${segment.firstIndex})"
+            oncontextmenu="openTimelineContextMenu(event, {type:'segment', segmentId:'${escapeHtml(segment.id)}', maxMs:${maximum}})">
+            <span class="block-resize-handle left" onpointerdown="beginSegmentResize(event, '${escapeHtml(segment.id)}', 'start_ms', ${maximum})" onclick="event.stopPropagation()"></span>
+            ${escapeHtml(label)}
+            <span class="block-resize-handle right" onpointerdown="beginSegmentResize(event, '${escapeHtml(segment.id)}', 'end_ms', ${maximum})" onclick="event.stopPropagation()"></span>
+        </button>`;
+    }).join('');
+    const timelineTiers = [
+        ['Handshape', item => item.channels?.handshape?.prediction?.label],
+        ['Location', item => item.channels?.location?.prediction?.label],
+        ['Orientation', item => item.channels?.orientation?.prediction?.label],
+        ['Movement', item => item.channels?.movement?.prediction?.label]
+    ];
+    const handLanes = ['H1', 'H2'].flatMap(role =>
+        timelineTiers.map(([tierName, valueFor]) => {
+            const blocks = (results || []).map((item, index) => {
+                if (item.standard.hand_role !== role ||
+                    item.standard.participation === 'inactive') return '';
+                const [start, end] = intervalFor(item, index);
+                if (isUnannotatedSpan(start, end)) return '';
+                const left = Math.max(0, start / maximum * 100);
+                const width = Math.max(0.7, (end - start) / maximum * 100);
+                const value = valueFor(item) || '—';
+                return `<button class="timeline-tier-block ${role === 'H2' ? 'h2' : ''}"
+                    data-segment="${escapeHtml(item.standard.segment_id)}"
+                    data-start="${start}" data-end="${end}"
+                    style="left:${left}%;width:${width}%"
+                    title="${escapeHtml(item.standard.segment_id)} · ${escapeHtml(value)} · ${start}-${end} ms（右键可拆分或删除）"
+                    onclick="seekToEvent(${index})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'hand', segmentId:'${escapeHtml(item.standard.segment_id)}', eventIndex:${index}, role:'${role}', maxMs:${maximum}})">${escapeHtml(value)}</button>`;
+            }).join('');
+            return `<div class="timeline-lane">
+                <span class="timeline-lane-label">${role} · ${tierName}</span>
+                <div class="timeline-rail"
+                    ondblclick="handleRailDoubleClick(event, '${role}', ${maximum})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'rail', role:'${role}', maxMs:${maximum}})">${blocks}</div>
+            </div>`;
+        })
+    ).join('');
+    return `<section class="timeline-panel">
+        <div class="timeline-heading">
+            <strong>SignPan 多层音系标注时间轴（ELAN 风格切分编辑）</strong>
+            <span>${visibleSegments.length} 个时间段 / ${visibleHands.length} 个手部标注 · 支持拖拽边界、双击空白轨新建、右键菜单</span>
+        </div>
+        <div class="timeline-toolbar" role="toolbar" aria-label="切分编辑工具栏">
+            <select aria-label="新建切分段手部模式" onchange="newSegmentHandMode = this.value">
+                <option value="both" ${newSegmentHandMode === 'both' ? 'selected' : ''}>新建：H1+H2 双手</option>
+                <option value="H1" ${newSegmentHandMode === 'H1' ? 'selected' : ''}>新建：仅 H1 主手</option>
+                <option value="H2" ${newSegmentHandMode === 'H2' ? 'selected' : ''}>新建：仅 H2 辅手</option>
+            </select>
+            <button type="button" class="timeline-tool-btn primary" onclick="addSegmentAtMs(getPlayheadMs(), newSegmentHandMode)" title="在当前视频播放头位置新增一个切分段（快捷键 N）">
+                + 在播放头新建 <span class="timeline-tool-kbd">N</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="splitSegmentAtMs()" title="在播放头位置将当前切分段一分为二（快捷键 S）">
+                ✂ 在播放头拆分 <span class="timeline-tool-kbd">S</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="mergeSegmentWithNext()" title="将当前切分段与紧邻的下一段合并（快捷键 M）">
+                ⇄ 合并下一段 <span class="timeline-tool-kbd">M</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="repredictSegment()" title="对当前切分段重新运行四通道模型/几何推理">
+                ⟳ 重算当前段
+            </button>
+            <button type="button" class="timeline-tool-btn danger" onclick="deleteSegmentById()" title="删除播放头所在的切分段（快捷键 Delete）">
+                🗑 删除当前段 <span class="timeline-tool-kbd">Del</span>
+            </button>
+            <span class="timeline-tool-hint">提示：右键轨道或色块可呼出菜单，拖拽 Segment 左右边缘可微调起止时间</span>
+        </div>
+        <div class="timeline-lanes">
+            <div class="timeline-lane">
+                <span class="timeline-lane-label">视频进度</span>
+                <div class="timeline-progress-wrap">
+                    <input class="timeline-progress" id="timelineProgress"
+                        type="range" min="0" max="${maximum}" step="1" value="${currentMs}"
+                        style="background:linear-gradient(90deg,var(--primary) ${progressPercent}%,#101c2f ${progressPercent}%)"
+                        aria-label="视频播放进度"
+                        onpointerdown="beginVideoScrub(event)"
+                        oninput="seekVideoProgress(this)"
+                        onchange="endVideoScrub()">
+                    ${scale}
+                </div>
+            </div>
+            <div class="timeline-lane">
+                <span class="timeline-lane-label">Segment</span>
+                <div class="timeline-rail"
+                    ondblclick="handleRailDoubleClick(event, newSegmentHandMode, ${maximum})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'rail', role:newSegmentHandMode, maxMs:${maximum}})">${segmentBlocks}</div>
+            </div>
+            ${handLanes}
+        </div>
+    </section>`;
+}
+
+function msFromRailEvent(event, maxMs) {
+    const rail = event.currentTarget.closest?.('.timeline-rail') || event.target.closest?.('.timeline-rail');
+    if (!rail) return getPlayheadMs();
+    const rect = rail.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(rect.width, 1)));
+    return Math.round(ratio * (Number(maxMs) || 1000));
+}
+
+function handleRailDoubleClick(event, roleHint, maxMs) {
+    if (event.target.closest('.timeline-tier-block')) return;
+    const clickMs = msFromRailEvent(event, maxMs);
+    addSegmentAtMs(clickMs, roleHint || newSegmentHandMode);
+}
+
+function beginSegmentResize(event, segmentId, field, maxMs) {
+    event.stopPropagation();
+    event.preventDefault();
+    closeTimelineContextMenu();
+    const rail = event.currentTarget.closest('.timeline-rail');
+    if (!rail) return;
+    const rect = rail.getBoundingClientRect();
+    const segments = collectTimelineSegments();
+    const targetSeg = segments.find(seg => seg.id === segmentId);
+    if (!targetSeg) return;
+
+    let latestMs = field === 'start_ms' ? targetSeg.start : targetSeg.end;
+    const onMove = moveEvent => {
+        const ratio = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / Math.max(rect.width, 1)));
+        const rawMs = Math.round(ratio * (Number(maxMs) || 1000));
+        if (field === 'start_ms') {
+            latestMs = Math.max(0, Math.min(rawMs, targetSeg.end - MIN_ANNOTATION_MS));
+        } else {
+            latestMs = Math.max(targetSeg.start + MIN_ANNOTATION_MS, rawMs);
+        }
+    };
+    const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        currentResults
+            .filter(item => item.standard?.segment_id === segmentId)
+            .forEach(item => {
+                item.standard[field] = latestMs;
+                item.standard.modified_at = new Date().toISOString();
+                item.standard.source = 'human_annotation';
+                syncEventSpanFromMs(item);
+            });
+        hasUnsavedChanges = true;
+        renderResults(currentResults, true);
+        syncUtteranceToPlayhead(field === 'start_ms' ? latestMs : targetSeg.start);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, {once: true});
+}
+
+function ensureContextMenuElement() {
+    let menu = document.getElementById('timelineContextMenu');
+    if (!menu) {
+        menu = document.createElement('div');
+        menu.id = 'timelineContextMenu';
+        menu.className = 'timeline-context-menu';
+        document.body.appendChild(menu);
+    }
+    return menu;
+}
+
+function closeTimelineContextMenu() {
+    const menu = document.getElementById('timelineContextMenu');
+    if (menu) menu.classList.remove('open');
+}
+
+function openTimelineContextMenu(event, ctx) {
+    event.preventDefault();
+    event.stopPropagation();
+    const clickMs = msFromRailEvent(event, ctx.maxMs);
+    const menu = ensureContextMenuElement();
+    const segments = collectTimelineSegments();
+    const seg = ctx.segmentId
+        ? segments.find(s => s.id === ctx.segmentId)
+        : segments.find(s => clickMs >= s.start && clickMs < s.end);
+
+    const items = [];
+    items.push(`<div class="context-menu-header">时间轴位置：${formatCutLabel(clickMs)} (${clickMs} ms)${seg ? ` · ${escapeHtml(seg.id)}` : ''}</div>`);
+
+    if (seg) {
+        const canSplitHere = clickMs - seg.start >= MIN_ANNOTATION_MS && seg.end - clickMs >= MIN_ANNOTATION_MS;
+        items.push(`<button type="button" class="context-menu-item" onclick="splitSegmentAtMs(${canSplitHere ? clickMs : 'null'}, '${escapeHtml(seg.id)}')">
+            <span>✂ ${canSplitHere ? `在此位置 (${formatCutLabel(clickMs)}) 拆分` : `在 ${escapeHtml(seg.id)} 中点拆分`}</span>
+            <span class="timeline-tool-kbd">S</span>
+        </button>`);
+        if (seg.hands.size < 2) {
+            items.push(`<button type="button" class="context-menu-item" onclick="addMissingHandToSegment('${escapeHtml(seg.id)}')">
+                <span>+ 为 ${escapeHtml(seg.id)} 补齐另一只手</span>
+            </button>`);
+        }
+        items.push(`<button type="button" class="context-menu-item" onclick="mergeSegmentWithNext('${escapeHtml(seg.id)}')">
+            <span>⇄ 与下一切分段合并</span>
+            <span class="timeline-tool-kbd">M</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="repredictSegment('${escapeHtml(seg.id)}')">
+            <span>⟳ 重算 ${escapeHtml(seg.id)} 四通道预测</span>
+        </button>`);
+        items.push(`<div class="context-menu-divider"></div>`);
+        if (ctx.type === 'hand' && Number.isInteger(ctx.eventIndex) && seg.hands.size >= 2) {
+            items.push(`<button type="button" class="context-menu-item danger" onclick="deleteHandEvent(${ctx.eventIndex})">
+                <span>× 仅删除 ${escapeHtml(ctx.role || '')} 手部事件</span>
+            </button>`);
+        }
+        items.push(`<button type="button" class="context-menu-item danger" onclick="deleteSegmentById('${escapeHtml(seg.id)}')">
+            <span>🗑 删除整个切分段 ${escapeHtml(seg.id)}</span>
+            <span class="timeline-tool-kbd">Del</span>
+        </button>`);
+    } else {
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'both')">
+            <span>+ 在此处新建 H1+H2 双手切分段</span>
+            <span class="timeline-tool-kbd">N</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'H1')">
+            <span>+ 在此处仅新建 H1（主手）切分段</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'H2')">
+            <span>+ 在此处仅新建 H2（辅手）切分段</span>
+        </button>`);
+    }
+
+    menu.innerHTML = items.join('');
+    menu.classList.add('open');
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = Math.min(event.clientX, Math.max(8, vw - 250));
+    const top = Math.min(event.clientY, Math.max(8, vh - 260));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+}
+
+document.addEventListener('click', () => closeTimelineContextMenu());
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeTimelineContextMenu();
+        return;
+    }
+    const tag = (event.target?.tagName || '').toLowerCase();
+    if (['input', 'select', 'textarea'].includes(tag) || event.target?.isContentEditable) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const resultsVisible = document.querySelector('.result-panel')?.classList.contains('result-ready');
+    if (!resultsVisible) return;
+
+    const key = event.key.toLowerCase();
+    if (key === 'n') {
+        event.preventDefault();
+        addSegmentAtMs(getPlayheadMs(), newSegmentHandMode);
+    } else if (key === 's') {
+        event.preventDefault();
+        splitSegmentAtMs();
+    } else if (key === 'm') {
+        event.preventDefault();
+        mergeSegmentWithNext();
+    } else if (event.key === 'Delete') {
+        event.preventDefault();
+        deleteSegmentById();
+    }
+});
+
+function editMeta(field, value) {
+    if (field === 'dominant_hand') {
+        currentAnnotationMeta.dominant_hand = value;
+        currentResults.forEach(item => {
+            item.standard ||= {};
+            item.standard.hand_role = String(item.hand || '').toLowerCase() === value ? 'H1' : 'H2';
+        });
+    } else {
+        currentAnnotationMeta[field] = String(value).trim();
+    }
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function editStandard(eventIndex, field, value, numeric = false) {
+    const event = currentResults[eventIndex];
+    if (!event) return;
+    event.standard ||= {};
+    const nextValue = numeric ? Math.round(Number(value)) : String(value).trim();
+    if (numeric && (!Number.isFinite(nextValue) || nextValue < 0)) {
+        toast('时间必须是非负整数毫秒', 'error');
+        renderResults(currentResults, true);
+        return;
+    }
+    const segmentId = event.standard.segment_id;
+    if (field === 'start_ms' || field === 'end_ms') {
+        const start = field === 'start_ms' ? nextValue : Number(event.standard.start_ms);
+        const end = field === 'end_ms' ? nextValue : Number(event.standard.end_ms);
+        if (start >= end) {
+            toast('起始时间必须小于结束时间', 'error');
+            renderResults(currentResults, true);
+            return;
+        }
+        currentResults.filter(item => item.standard?.segment_id === segmentId)
+            .forEach(item => {
+                item.standard[field] = nextValue;
+                syncEventSpanFromMs(item);
+            });
+    } else {
+        event.standard[field] = nextValue;
+    }
+    event.standard.modified_at = new Date().toISOString();
+    event.standard.source = 'human_annotation';
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function selectStandardCandidate(eventIndex, field, select) {
+    if (!select.value) return;
+    editStandard(eventIndex, field, select.value);
+}
+
+function seekToEvent(eventIndex) {
+    const event = currentResults[eventIndex];
+    if (!event) return;
+    const video = document.getElementById('videoPlayer');
+    seekToMs(
+        Number(event.standard?.start_ms || 0),
+        Number(event.standard?.end_ms || 0)
+    );
+}
+
+function updateVideoProgressBar(input) {
+    if (!input) return;
+    const maximum = Number(input.max) || 1;
+    const percent = Math.max(0, Math.min(100, Number(input.value) / maximum * 100));
+    input.style.background = `linear-gradient(90deg,var(--primary) ${percent}%,#101c2f ${percent}%)`;
+}
+
+let videoScrubbing = false;
+
+function beginVideoScrub(event) {
+    videoScrubbing = true;
+    const video = document.getElementById('videoPlayer');
+    if (video) {
+        delete video.dataset.stopAt;
+        video.pause();
+    }
+    if (event?.currentTarget?.setPointerCapture && event.pointerId !== undefined) {
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch (error) {}
+    }
+    window.addEventListener('pointerup', endVideoScrub, {once: true});
+    window.addEventListener('pointercancel', endVideoScrub, {once: true});
+}
+
+function endVideoScrub() {
+    if (!videoScrubbing) return;
+    videoScrubbing = false;
+    const progress = document.getElementById('timelineProgress');
+    if (progress) seekVideoProgress(progress);
+}
+
+function seekVideoProgress(input) {
+    const video = document.getElementById('videoPlayer');
+    if (!video || !input) return;
+    const seconds = Number(input.value || 0) / 1000;
+    if (!Number.isFinite(seconds)) return;
+    delete video.dataset.stopAt;
+    const duration = Number(video.duration);
+    const target = Number.isFinite(duration) && duration > 0
+        ? Math.min(Math.max(0, seconds), Math.max(0, duration - 0.04))
+        : Math.max(0, seconds);
+    video.pause();
+    if (Math.abs((Number(video.currentTime) || 0) - target) > 0.03) {
+        video.currentTime = target;
+    }
+    updateVideoProgressBar(input);
+    syncUtteranceToPlayhead(target * 1000);
+}
+
+function seekToMs(startMs, endMs) {
+    const video = document.getElementById('videoPlayer');
+    video.currentTime = Number(startMs || 0) / 1000;
+    video.dataset.stopAt = String(Number(endMs || 0) / 1000);
+    syncUtteranceToPlayhead(Number(startMs || 0));
+    video.play().catch(() => {});
+}
+
+document.getElementById('videoPlayer').addEventListener('timeupdate', event => {
+    const progress = document.getElementById('timelineProgress');
+    const currentMs = event.currentTarget.currentTime * 1000;
+    if (progress && !videoScrubbing && !event.currentTarget.paused) {
+        progress.value = String(currentMs);
+        updateVideoProgressBar(progress);
+    }
+    syncUtteranceToPlayhead(currentMs);
+    const stopAt = Number(event.currentTarget.dataset.stopAt);
+    if (Number.isFinite(stopAt) && stopAt > 0 && event.currentTarget.currentTime >= stopAt) {
+        event.currentTarget.pause();
+        delete event.currentTarget.dataset.stopAt;
+    }
+});
+document.getElementById('videoPlayer').addEventListener('loadedmetadata', () => {
+    if (currentResults.length) renderResults(currentResults, true);
+});
+
+function renderSummary(results) {
+    let available = 0;
+    let modified = 0;
+    let needsReview = 0;
+    let invalidLabels = 0;
+    results.forEach((event, index) => {
+        const [startMs, endMs] = intervalFor(event, index);
+        if (isUnannotatedSpan(startMs, endMs)) return;
+        const channels = event.channels || {};
+        CHANNEL_KEYS.forEach(key => {
+            const channel = channels[key];
+            if (channel?.status?.code === 'OK') available++;
+            if (channel?.metadata?.human_modified) modified++;
+        });
+        if (['uncertain', 'unobservable'].includes(event.standard?.annotation_status)) {
+            needsReview++;
+        }
+        const values = [
+            [channels.handshape?.prediction?.label, STANDARD_LABELS.handshape],
+            [channels.location?.prediction?.label, STANDARD_LABELS.location],
+            [channels.orientation?.prediction?.label, STANDARD_LABELS.orientation],
+            [channels.movement?.prediction?.label, STANDARD_LABELS.movement]
+        ];
+        values.forEach(([value, allowed]) => {
+            if (value && !allowed.includes(value)) invalidLabels++;
+        });
+    });
+    const visible = results.filter((event, index) => {
+        const [startMs, endMs] = intervalFor(event, index);
+        return !isUnannotatedSpan(startMs, endMs);
+    });
+    const total = visible.length * CHANNEL_COUNT;
+    const segments = new Set(visible.map(event => event.standard?.segment_id)).size;
+    const draft = results.some(event => event.segmentation?.source === 'unnumbered');
+    const syncText = hasUnsavedChanges
+        ? '● 有未保存修改'
+        : draft
+            ? '模型草稿 · 待复核'
+            : '✓ 已同步';
+    document.getElementById('resultSummary').innerHTML = `
+        <span class="summary-pill"><strong>${segments}</strong> 个时间段（Segment）/ ${visible.length} 个手部标注</span>
+        <span class="summary-pill"><strong>${available}/${total}</strong> 个可用通道</span>
+        <span class="summary-pill"><strong>${modified}</strong> 项人工修订</span>
+        <span class="summary-pill"><strong>${needsReview}</strong> 项待复核</span>
+        <span class="summary-pill"><strong>${invalidLabels}</strong> 个非规范标签</span>
+        <span class="summary-pill">${syncText}</span>`;
+    const saveButton = document.getElementById('saveBtn');
+    saveButton.textContent = hasUnsavedChanges ? '保存修改 · 未保存' : '保存修改';
+}
+
+function toggleJson(el) {
+    const raw = el.nextElementSibling;
+    raw.style.display = raw.style.display === 'none' ? 'block' : 'none';
+}
+
+function renderNmfPanel() {
+    const nmf = ensureNmf();
+    const statuses = [
+        ['observed_absent', 'observed_absent · 已观察，无事件'],
+        ['observed', 'observed · 有事件'],
+        ['unobservable', 'unobservable · 不可观察'],
+        ['uncertain', 'uncertain · 无法确定']
+    ];
+    return `<details class="standard-panel">
+        <summary>非手动参数 · 面部 / 躯干</summary>
+        <div class="standard-grid">
+            <div class="standard-field"><label>观察状态</label>
+                <select onchange="editNmfStatus(this.value)">
+                    ${statuses.map(([value, text]) => `<option value="${value}" ${nmf.status === value ? 'selected' : ''}>${text}</option>`).join('')}
+                </select></div>
+            <p class="standard-help">面部和躯干按自己的起止时间记录，可以跨过多个 Segment。符号来自规范附录表。</p>
+        </div>
+        ${renderNmfEvents('facial_events', '面部', 'facial')}
+        ${renderNmfEvents('torso_events', '躯干', 'torso')}
+    </details>`;
+}
+
+function renderNmfEvents(bucket, title, listName) {
+    const nmf = ensureNmf();
+    const rows = (nmf[bucket] || []).map((item, index) => `
+        <div class="standard-grid">
+            <div class="standard-field"><label>${title}符号</label>
+                <input list="labels-${listName}" value="${escapeHtml(item.label || '')}"
+                    onchange="editNmfEvent('${bucket}', ${index}, 'label', this.value)"></div>
+            <div class="standard-field"><label>起始毫秒</label>
+                <input type="number" min="0" value="${Number(item.start_ms) || 0}"
+                    onchange="editNmfEvent('${bucket}', ${index}, 'start_ms', this.value)"></div>
+            <div class="standard-field"><label>结束毫秒</label>
+                <input type="number" min="1" value="${Number(item.end_ms) || 1}"
+                    onchange="editNmfEvent('${bucket}', ${index}, 'end_ms', this.value)"></div>
+            <div class="standard-field"><label>操作</label>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeNmfEvent('${bucket}', ${index})">删除</button></div>
+        </div>`).join('');
+    return `<div class="nmf-block">
+        <button type="button" class="btn btn-secondary btn-small" onclick="addNmfEvent('${bucket}', '${listName}')">添加${title}事件</button>
+        ${rows || `<p class="standard-help">还没有${title}事件。</p>`}
+    </div>`;
+}
+
+function addNmfEvent(bucket, listName) {
+    const nmf = ensureNmf();
+    const prefix = bucket === 'facial_events' ? 'FE' : 'TM';
+    nmf[bucket].push({
+        event_id: `${prefix}${nmf[bucket].length + 1}`,
+        label: STANDARD_LABELS[listName][0],
+        start_ms: 0,
+        end_ms: 1000
+    });
+    if (nmf.status === 'observed_absent') nmf.status = 'observed';
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function editNmfEvent(bucket, index, field, value) {
+    const nmf = ensureNmf();
+    const item = nmf[bucket]?.[index];
+    if (!item) return;
+    if (field === 'start_ms' || field === 'end_ms') {
+        const nextValue = Math.round(Number(value));
+        if (!Number.isFinite(nextValue) || nextValue < 0) {
+            toast('时间必须是非负整数毫秒', 'error');
+            renderResults(currentResults, true);
+            return;
+        }
+        const start = field === 'start_ms' ? nextValue : Number(item.start_ms);
+        const end = field === 'end_ms' ? nextValue : Number(item.end_ms);
+        if (start >= end) {
+            toast('起始时间必须小于结束时间', 'error');
+            renderResults(currentResults, true);
+            return;
+        }
+        item[field] = nextValue;
+    } else {
+        const label = String(value || '').trim();
+        if (!labelIsStandard(bucket === 'facial_events' ? 'facial' : 'torso', label)) {
+            toast('输入错误', 'error');
+            renderResults(currentResults, true);
+            return;
+        }
+        item.label = label;
+    }
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function removeNmfEvent(bucket, index) {
+    const nmf = ensureNmf();
+    nmf[bucket].splice(index, 1);
+    if (!nmf.facial_events.length && !nmf.torso_events.length && nmf.status === 'observed') {
+        nmf.status = 'observed_absent';
+    }
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function editNmfStatus(value) {
+    const nmf = ensureNmf();
+    nmf.status = value;
+    if (value === 'observed_absent') {
+        nmf.facial_events = [];
+        nmf.torso_events = [];
+    }
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function labelIsStandard(listName, value) {
+    const allowed = STANDARD_LABELS[listName] || [];
+    return allowed.includes(String(value || '').trim());
+}
+
+function manualLabelsAreStandard() {
+    for (const event of currentResults) {
+        for (const key of ['handshape', 'location', 'orientation', 'movement']) {
+            const channel = event.channels?.[key];
+            if (!channel) continue;
+            const metadata = channel.metadata || {};
+            const human = metadata.human_modified || metadata.source === 'human_annotation';
+            if (!human) continue;
+            if (!labelIsStandard(key, channel.prediction?.label)) return false;
+        }
+    }
+    const nmf = currentAnnotationMeta.nmf || {};
+    for (const item of nmf.facial_events || []) {
+        if (!labelIsStandard('facial', item.label)) return false;
+    }
+    for (const item of nmf.torso_events || []) {
+        if (!labelIsStandard('torso', item.label)) return false;
+    }
+    return true;
+}
+
+function editLabel(eventIndex, channelName, value) {
+    const channel = currentResults[eventIndex]?.channels?.[channelName];
+    if (!channel) return;
+    const label = String(value || '').trim();
+    if (!labelIsStandard(channelName, label)) {
+        toast('输入错误', 'error');
+        renderResults(currentResults, true);
+        return;
+    }
+    channel.prediction = channel.prediction || {};
+    channel.metadata = channel.metadata || {};
+    if (!channel.metadata.human_modified) {
+        channel.metadata.model_label = channel.prediction.label || null;
+        channel.metadata.original_source = channel.metadata.source || null;
+    }
+    channel.prediction.label = label;
+    channel.metadata.human_label = label;
+    channel.metadata.human_modified = true;
+    channel.metadata.modified_at = new Date().toISOString();
+    channel.metadata.source = 'human_annotation';
+    channel.status = {code: 'OK', message: '人工标注'};
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function selectCandidate(eventIndex, channelName, encodedLabel) {
+    editLabel(eventIndex, channelName, decodeURIComponent(encodedLabel));
+}
+
+function selectCandidateFromDropdown(eventIndex, channelName, select) {
+    if (!select.value) return;
+    editLabel(eventIndex, channelName, select.value);
+}
+
+async function saveEdits() {
+    if (!currentTaskId || !currentResults.length) {
+        toast('没有可保存的结果', 'error');
+        return false;
+    }
+    if (!manualLabelsAreStandard()) {
+        toast('输入错误', 'error');
+        return false;
+    }
+    const button = document.getElementById('saveBtn');
+    button.disabled = true;
+    try {
+        const response = await fetch('/save/' + encodeURIComponent(currentTaskId), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                result: currentResults,
+                annotation_meta: currentAnnotationMeta
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '保存失败');
+        hasUnsavedChanges = false;
+        renderSummary(currentResults);
+        toast('标注已保存', 'success');
+        refreshHistory(1);
+        return true;
+    } catch (error) {
+        toast('保存失败: ' + error.message, 'error');
+        return false;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function exportResult(format) {
+    const saved = await saveEdits();
+    if (!saved) return;
+    const link = document.createElement('a');
+    link.href = `/export/${encodeURIComponent(currentTaskId)}?format=${format}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+async function refreshHistory(page) {
+    const select = document.getElementById('historySelect');
+    const requested = Number.isInteger(page) ? page : historyPage;
+    const previous = select.value;
+    try {
+        const response = await fetch(`/api/annotations?page=${requested}&page_size=8`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '加载失败');
+        const items = data.items || [];
+        historyPage = data.page || 1;
+        historyPages = data.pages || 1;
+        select.innerHTML = items.length
+            ? items.map(item => {
+                const title = `${item.video_name || item.task_id || item.name} · ${item.event_count} 个事件 · ${item.saved_at || ''}`;
+                return `<option value="${escapeHtml(item.name)}">${escapeHtml(title)}</option>`;
+            }).join('')
+            : '<option value="">暂无已保存结果</option>';
+        if (previous && [...select.options].some(option => option.value === previous)) {
+            select.value = previous;
+        }
+    } catch (error) {
+        select.innerHTML = '<option value="">历史记录加载失败</option>';
+    }
+    const pageLabel = document.getElementById('historyPage');
+    pageLabel.textContent = `${historyPage} / ${historyPages}`;
+    document.getElementById('historyPrev').disabled = historyPage <= 1;
+    document.getElementById('historyNext').disabled = historyPage >= historyPages;
+}
+
+function changeHistoryPage(delta) {
+    const next = historyPage + delta;
+    if (next < 1 || next > historyPages) return;
+    refreshHistory(next);
+}
+
+async function loadHistory() {
+    const name = document.getElementById('historySelect').value;
+    if (!name) {
+        toast('请选择历史标注', 'error');
+        return;
+    }
+    if (hasUnsavedChanges && !confirm('当前修改尚未保存，确定打开其他标注吗？')) {
+        return;
+    }
+    try {
+        const response = await fetch('/api/annotations/' + encodeURIComponent(name));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '加载失败');
+        currentTaskId = data.task_id;
+        currentHistoryName = name;
+        currentAnnotationMeta = {
+            ...createAnnotationMeta(),
+            ...(data.annotation_meta || {})
+        };
+        renderResults(data.result);
+        toast('历史标注已加载，可继续修改', 'success');
+    } catch (error) {
+        toast('加载失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteHistory() {
+    const select = document.getElementById('historySelect');
+    const name = select.value;
+    if (!name) {
+        toast('请选择要删除的历史标注', 'error');
+        return;
+    }
+    const label = select.selectedOptions[0]?.textContent || name;
+    if (!confirm(`确定删除这条历史标注吗？\n${label}\n删除后无法恢复。`)) return;
+    try {
+        const response = await fetch('/api/annotations/' + encodeURIComponent(name), {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '删除失败');
+        if (currentHistoryName === name) {
+            currentHistoryName = null;
+            hasUnsavedChanges = Boolean(currentResults.length);
+            toast('已删除保存的文件。当前画面仍保留这份内容，需要的话请重新保存。', 'success');
+        } else {
+            toast('历史标注已删除', 'success');
+        }
+        await refreshHistory(historyPage);
+    } catch (error) {
+        toast('删除失败: ' + error.message, 'error');
+    }
+}
+
+function resetAll() {
+    if (hasUnsavedChanges && !confirm('当前修改尚未保存，确定重置吗？')) {
+        return;
+    }
+    selectedFile = null;
+    currentTaskId = null;
+    currentHistoryName = null;
+    currentResults = [];
+    currentAnnotationMeta = createAnnotationMeta();
+    if (pollInterval) clearInterval(pollInterval);
+    document.getElementById('fileInput').value = '';
+    document.getElementById('videoPreview').style.display = 'none';
+    document.getElementById('inputPanel').classList.remove('has-video');
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    document.getElementById('videoPlayer').src = '';
+    document.getElementById('predictBtn').disabled = true;
+    const manualBtn = document.getElementById('manualSegBtn');
+    if (manualBtn) manualBtn.disabled = true;
+    document.getElementById('progressSection').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('resultsContent').innerHTML = '';
+    showEmptyState('等待预测结果', '从左侧上传视频并开始预测，结果将在这里按事件展示。');
+}
+
+function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 5000);
+}
+
+refreshHistory();
+</script>
+</body>
+</html>

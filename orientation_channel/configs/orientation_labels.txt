@@ -1,0 +1,11 @@
+# one label per line
+TU
+TD
+TL
+TR
+TLU
+TRU
+TLD
+TRD
+AFB
+TB

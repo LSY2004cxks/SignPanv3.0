@@ -1,0 +1,55 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ANNOTATION_DOCUMENT xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" AUTHOR="SignPan" DATE="2026-11-16T23:08:47+00:00" FORMAT="3.0" VERSION="3.0" xsi:noNamespaceSchemaLocation="http://www.mpi.nl/tools/elan/EAFv3.0.xsd">
+  <HEADER MEDIA_FILE="" TIME_UNITS="milliseconds">
+    <MEDIA_DESCRIPTOR MEDIA_URL="file:///D:/SignPanv3.0/demo.mp4" MIME_TYPE="video/mp4" RELATIVE_MEDIA_URL="./demo.mp4" TIME_ORIGIN="0" />
+    <PROPERTY NAME="lastUsedAnnotationId">3</PROPERTY>
+    <PROPERTY NAME="SignPan.schema">sign_phonology_v1</PROPERTY>
+    <PROPERTY NAME="SignPan.exporter">SignPanv3.0</PROPERTY>
+    <PROPERTY NAME="SignPan.sourceJSON">[{"channels":{"location":{"event_id":"R_Event_1","metadata":{"human_modified":true,"model_label":"CR","source":"human_annotation"},"prediction":{"conf":0.8,"label":"FR"},"sample_id":"S1_V1_R_Event_1_RIGHT","status":{"code":"OK","message":""}}},"event_id":"R_Event_1","hand":"right","sample_id":"S1_V1_R_Event_1_RIGHT","schema":"sign_phonology_v1","segmentation":{"fps":30,"span":{"end_frame":20,"start_frame":10}},"signer_id":"S1","video_id":"V1"}]</PROPERTY>
+    <PROPERTY NAME="SignPan.standardJSON">{"schema_version":"1.0","standard_version":"3.0","annotation_scope":{"implemented":["segment","H1_H2","handshape","location","orientation","movement","non_manual_features"],"not_implemented":["non_target_intervals","gloss"]},"record_id":"demo","revision_version":"2","created_at":"2026-11-16T23:08:47.265919+00:00","modified_at":"2026-11-16T23:08:47.265919+00:00","media":{"video":"demo.mp4","timeline_unit":"ms"},"dominant_hand":"right","segments":[{"segment_id":"S1","start_ms":333,"end_ms":667,"annotated":true,"hands":{"H1":{"participation":"active","physical_hand":"right","handshape":{"value":"NOH","status":"observed"},"location":{"value":"FR","start":"FR","end":"FR","status":"observed"},"orientation":{"value":"NOO","status":"observed"},"movement":{"value":"NOM","path":"NOM","local":"NOM","status":"observed"}},"H2":{"participation":"inactive","handshape":{"value":"NOH"},"location":{"value":"NOL","start":"NOL","end":"NOL"},"orientation":{"value":"NOO"},"movement":{"value":"NOM","path":"NOM","local":"NOM"}}},"source_event_ids":["R_Event_1"]}],"nmf":{"status":"observed_absent","facial_events":[],"torso_events":[]},"review":{"status":"in_progress","annotator":"","reviewer":""}}</PROPERTY>
+    <PROPERTY NAME="SignPan.standardVersion">3.0</PROPERTY>
+    <PROPERTY NAME="SignPan.tierHierarchy">Utterance &gt; Event@Left|Event@Right &gt; Handshape|Movement|Location|Orientation; Facial; Torso</PROPERTY>
+  </HEADER>
+  <TIME_ORDER>
+    <TIME_SLOT TIME_SLOT_ID="ts1" TIME_VALUE="333" />
+    <TIME_SLOT TIME_SLOT_ID="ts2" TIME_VALUE="667" />
+  </TIME_ORDER>
+  <TIER TIER_ID="Utterance" LINGUISTIC_TYPE_REF="utterance" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a1" TIME_SLOT_REF1="ts1" TIME_SLOT_REF2="ts2">
+        <ANNOTATION_VALUE>demo</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER TIER_ID="Event@Left" LINGUISTIC_TYPE_REF="event" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Handshape@Left" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Movement@Left" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Location@Left" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Orientation@Left" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Event@Right" LINGUISTIC_TYPE_REF="event" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a2" TIME_SLOT_REF1="ts1" TIME_SLOT_REF2="ts2">
+        <ANNOTATION_VALUE>R_Event_1</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER TIER_ID="Handshape@Right" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Movement@Right" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <TIER TIER_ID="Location@Right" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1">
+    <ANNOTATION>
+      <ALIGNABLE_ANNOTATION ANNOTATION_ID="a3" TIME_SLOT_REF1="ts1" TIME_SLOT_REF2="ts2">
+        <ANNOTATION_VALUE>FR</ANNOTATION_VALUE>
+      </ALIGNABLE_ANNOTATION>
+    </ANNOTATION>
+  </TIER>
+  <TIER TIER_ID="Orientation@Right" LINGUISTIC_TYPE_REF="phonological_feature" ANNOTATOR="SignPan" DEFAULT_LOCALE="zh" LANG_REF="sgn" PARTICIPANT="S1" />
+  <LINGUISTIC_TYPE GRAPHIC_REFERENCES="false" LINGUISTIC_TYPE_ID="utterance" TIME_ALIGNABLE="true" />
+  <LINGUISTIC_TYPE GRAPHIC_REFERENCES="false" LINGUISTIC_TYPE_ID="event" TIME_ALIGNABLE="true" />
+  <LINGUISTIC_TYPE GRAPHIC_REFERENCES="false" LINGUISTIC_TYPE_ID="phonological_feature" TIME_ALIGNABLE="true" />
+  <LOCALE LANGUAGE_CODE="zh" COUNTRY_CODE="CN" />
+  <LANGUAGE LANG_ID="sgn" LANG_DEF="https://iso639-3.sil.org/code/sgn" LANG_LABEL="Sign languages" />
+  <CONSTRAINT DESCRIPTION="Time subdivision of parent annotation's time interval, no time gaps allowed within this interval" STEREOTYPE="Time_Subdivision" />
+  <CONSTRAINT DESCRIPTION="Symbolic subdivision of a parent annotation. Annotations referring to the same parent are ordered" STEREOTYPE="Symbolic_Subdivision" />
+  <CONSTRAINT DESCRIPTION="1-1 association with a parent annotation" STEREOTYPE="Symbolic_Association" />
+  <CONSTRAINT DESCRIPTION="Time alignable annotations within the parent annotation's time interval, gaps are allowed" STEREOTYPE="Included_In" />
+</ANNOTATION_DOCUMENT>

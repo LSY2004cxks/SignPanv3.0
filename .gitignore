@@ -1,0 +1,42 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Runtime outputs, uploads, demo recordings
+output/
+*.log
+
+# Local caches / extracted features (regenerated from video)
+*.npz
+handshape_channel_data28/cache/
+handshape_channel_data28/manifest/manifest.jsonl
+orientation_channel/data/precomputed/
+
+# Media that should not be published without clearance
+*.mp4
+*.mov
+*.avi
+*.wav
+*.jpg
+*.jpeg
+*.png
+
+# Keep schema / docs images if any under docs (override below)
+!docs/**/*.png
+!docs/**/*.jpg

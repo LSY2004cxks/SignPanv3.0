@@ -1,0 +1,17 @@
+inherit: full.yaml
+output_root: outputs/exp_backbone_resnet18_full_stgcn_img
+
+params:
+  roi_input: img
+
+model:
+  roi_backbone: resnet18
+  geom_encoder_type: stgcn
+  use_roi: true
+  use_geom: true
+  use_normal: true
+  use_text: true
+
+train:
+  batch_size: 8
+

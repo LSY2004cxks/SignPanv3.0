@@ -1,0 +1,69 @@
+experiment:
+  exp_name: handshape_data28_schemeA_fold1_k24_roi_only
+  seed: 42
+  runs_root: runs_schemeA
+
+data:
+  data_root: ../data28
+  manifest_path: manifest/manifest.jsonl
+  split_dir: splits_schemeA/fold_1
+  k: 24
+  k_candidates: [24]
+  roi_size: 224
+  cache_keypoints_dir: cache/keypoints
+  cache_roi_dir: ../data28_roi_fixlen_mmpose
+  cache_skeleton_dir: ../data28_mp_hand3d_effective
+  cache_meta_dir: cache/meta
+  num_workers: 4
+  on_the_fly_fallback: false
+  tier_weights:
+    A: 1.0
+    B: 0.8
+    C: 0.5
+    D: 0.2
+
+preprocess:
+  engine:
+    default: mediapipe
+    health_csv: ""
+    swap_left_right: false
+    fallback_max_frames: 3
+    mmpose_pose2d: wholebody
+    mediapipe_min_det_conf: 0.4
+
+model:
+  mode: roi_only
+  roi_backbone: convnext_tiny
+  roi_dim: 512
+  skel_dim: 256
+  fusion_hidden: 512
+  dropout: 0.1
+  pretrained: true
+  freeze_backbone: true
+
+loss:
+  tau: 0.07
+  lambda_nce: 0.0
+  nce_start_epoch: 1
+
+training:
+  optimizer: AdamW
+  lr_head: 3.0e-4
+  lr_backbone: 1.0e-5
+  weight_decay: 1.0e-4
+  batch_size: 8
+  min_batch_size: 2
+  epochs: 50
+  stage1_epochs: 8
+  early_stop_metric: hit@3
+  patience: 10
+  min_delta: 0.0005
+  class_imbalance:
+    strategy: class_balanced_sampler
+    beta: 0.9999
+
+inference:
+  gating:
+    margin_min: 0.2
+    p1_min: 0.7
+

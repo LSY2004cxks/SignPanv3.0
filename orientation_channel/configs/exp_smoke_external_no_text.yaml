@@ -1,0 +1,10 @@
+inherit: exp_resnet18_full_stgcn_no_text.yaml
+output_root: outputs/smoke_external_no_text
+
+params:
+  split_dir: /home/yuan/桌面/SignPanv2.0/data28/split_smoke_orientation
+
+train:
+  epochs: 2
+  batch_size: 8
+  num_workers: 2

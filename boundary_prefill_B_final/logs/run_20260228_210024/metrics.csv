@@ -1,0 +1,2 @@
+epoch,train_loss,val_mean_f1_w3,val_mean_f1_w5,val_mean_f1_w7,val_span_f1
+1,0.5027525424957275,0.0,0.0,0.0,0.0

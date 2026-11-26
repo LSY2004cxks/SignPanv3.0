@@ -1,0 +1,16 @@
+inherit: full.yaml
+output_root: outputs/exp_modal_skel
+
+params:
+  roi_input: auto
+
+model:
+  roi_backbone: resnet18
+  geom_encoder_type: stgcn
+  use_roi: false
+  use_geom: true
+  use_normal: false
+  use_text: false
+
+train:
+  lr: 3.0e-4

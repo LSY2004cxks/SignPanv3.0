@@ -1,0 +1,17 @@
+inherit: full.yaml
+output_root: outputs/exp_modal_skel_text_kv
+
+params:
+  roi_input: auto
+
+model:
+  roi_backbone: resnet18
+  geom_encoder_type: stgcn
+  use_roi: false
+  use_geom: true
+  use_normal: false
+  use_text: true
+  use_text_as_kv: true
+
+train:
+  lr: 1.0e-4

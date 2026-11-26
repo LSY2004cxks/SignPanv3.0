@@ -1,0 +1,440 @@
+{
+  "scheme": "A_fixed_test_group_kfold",
+  "data_root": "/home/yuan/桌面/SignPanv2.0/data28",
+  "manifest": "/home/yuan/桌面/SignPanv2.0/handshape_channel_data28/manifest/manifest.jsonl",
+  "seed": 42,
+  "num_folds": 5,
+  "test_n": 5,
+  "all_signers_sorted": [
+    "S8",
+    "S10",
+    "S12",
+    "S13",
+    "S19",
+    "S20",
+    "S21",
+    "S22",
+    "S29",
+    "S34",
+    "S36",
+    "S42",
+    "S43",
+    "S48",
+    "S49",
+    "S57",
+    "S58",
+    "S60",
+    "S61",
+    "S65",
+    "S92",
+    "S100",
+    "S109",
+    "S116",
+    "S124",
+    "S136",
+    "S142",
+    "S178"
+  ],
+  "fixed_test_signers": [
+    "S21",
+    "S22",
+    "S48",
+    "S57",
+    "S142"
+  ],
+  "anchor_train_signers": [
+    "S109"
+  ],
+  "must_test_signers": [
+    "S21",
+    "S48",
+    "S57"
+  ],
+  "must_val_signers": [
+    "S20",
+    "S65",
+    "S92"
+  ],
+  "dev_signers": [
+    "S8",
+    "S10",
+    "S12",
+    "S13",
+    "S19",
+    "S20",
+    "S29",
+    "S34",
+    "S36",
+    "S42",
+    "S43",
+    "S49",
+    "S58",
+    "S60",
+    "S61",
+    "S65",
+    "S92",
+    "S100",
+    "S109",
+    "S116",
+    "S124",
+    "S136",
+    "S178"
+  ],
+  "manifest_counts_by_signer": {
+    "S8": 252,
+    "S10": 252,
+    "S12": 252,
+    "S13": 252,
+    "S19": 252,
+    "S20": 249,
+    "S21": 252,
+    "S22": 252,
+    "S29": 252,
+    "S34": 252,
+    "S36": 252,
+    "S42": 252,
+    "S43": 252,
+    "S48": 219,
+    "S49": 252,
+    "S57": 252,
+    "S58": 252,
+    "S60": 252,
+    "S61": 252,
+    "S65": 233,
+    "S92": 248,
+    "S100": 250,
+    "S109": 235,
+    "S116": 251,
+    "S124": 252,
+    "S136": 252,
+    "S142": 252,
+    "S178": 252
+  },
+  "folds": [
+    {
+      "fold_id": 1,
+      "train_signers": [
+        "S8",
+        "S10",
+        "S12",
+        "S13",
+        "S19",
+        "S29",
+        "S34",
+        "S36",
+        "S42",
+        "S43",
+        "S49",
+        "S58",
+        "S61",
+        "S100",
+        "S109",
+        "S124",
+        "S136",
+        "S178"
+      ],
+      "val_signers": [
+        "S20",
+        "S60",
+        "S65",
+        "S92",
+        "S116"
+      ],
+      "test_signers": [
+        "S21",
+        "S22",
+        "S48",
+        "S57",
+        "S142"
+      ],
+      "anchor_train_signers": [
+        "S109"
+      ],
+      "anchor_all_in_train": true,
+      "summary": {
+        "train": {
+          "num_signers": 18,
+          "num_samples": 4517,
+          "num_labels": 30,
+          "missing_labels": []
+        },
+        "val": {
+          "num_signers": 5,
+          "num_samples": 1233,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        },
+        "test": {
+          "num_signers": 5,
+          "num_samples": 1227,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        }
+      }
+    },
+    {
+      "fold_id": 2,
+      "train_signers": [
+        "S10",
+        "S12",
+        "S13",
+        "S20",
+        "S29",
+        "S34",
+        "S36",
+        "S43",
+        "S49",
+        "S58",
+        "S60",
+        "S65",
+        "S92",
+        "S109",
+        "S116",
+        "S124",
+        "S136",
+        "S178"
+      ],
+      "val_signers": [
+        "S8",
+        "S19",
+        "S42",
+        "S61",
+        "S100"
+      ],
+      "test_signers": [
+        "S21",
+        "S22",
+        "S48",
+        "S57",
+        "S142"
+      ],
+      "anchor_train_signers": [
+        "S109"
+      ],
+      "anchor_all_in_train": true,
+      "summary": {
+        "train": {
+          "num_signers": 18,
+          "num_samples": 4492,
+          "num_labels": 30,
+          "missing_labels": []
+        },
+        "val": {
+          "num_signers": 5,
+          "num_samples": 1258,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        },
+        "test": {
+          "num_signers": 5,
+          "num_samples": 1227,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        }
+      }
+    },
+    {
+      "fold_id": 3,
+      "train_signers": [
+        "S8",
+        "S12",
+        "S13",
+        "S19",
+        "S20",
+        "S34",
+        "S36",
+        "S42",
+        "S49",
+        "S58",
+        "S60",
+        "S61",
+        "S65",
+        "S92",
+        "S100",
+        "S109",
+        "S116",
+        "S136",
+        "S178"
+      ],
+      "val_signers": [
+        "S10",
+        "S29",
+        "S43",
+        "S124"
+      ],
+      "test_signers": [
+        "S21",
+        "S22",
+        "S48",
+        "S57",
+        "S142"
+      ],
+      "anchor_train_signers": [
+        "S109"
+      ],
+      "anchor_all_in_train": true,
+      "summary": {
+        "train": {
+          "num_signers": 19,
+          "num_samples": 4742,
+          "num_labels": 30,
+          "missing_labels": []
+        },
+        "val": {
+          "num_signers": 4,
+          "num_samples": 1008,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        },
+        "test": {
+          "num_signers": 5,
+          "num_samples": 1227,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        }
+      }
+    },
+    {
+      "fold_id": 4,
+      "train_signers": [
+        "S8",
+        "S10",
+        "S13",
+        "S19",
+        "S20",
+        "S29",
+        "S36",
+        "S42",
+        "S43",
+        "S58",
+        "S60",
+        "S61",
+        "S65",
+        "S92",
+        "S100",
+        "S109",
+        "S116",
+        "S124",
+        "S178"
+      ],
+      "val_signers": [
+        "S12",
+        "S34",
+        "S49",
+        "S136"
+      ],
+      "test_signers": [
+        "S21",
+        "S22",
+        "S48",
+        "S57",
+        "S142"
+      ],
+      "anchor_train_signers": [
+        "S109"
+      ],
+      "anchor_all_in_train": true,
+      "summary": {
+        "train": {
+          "num_signers": 19,
+          "num_samples": 4742,
+          "num_labels": 30,
+          "missing_labels": []
+        },
+        "val": {
+          "num_signers": 4,
+          "num_samples": 1008,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        },
+        "test": {
+          "num_signers": 5,
+          "num_samples": 1227,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        }
+      }
+    },
+    {
+      "fold_id": 5,
+      "train_signers": [
+        "S8",
+        "S10",
+        "S12",
+        "S19",
+        "S20",
+        "S29",
+        "S34",
+        "S42",
+        "S43",
+        "S49",
+        "S60",
+        "S61",
+        "S65",
+        "S92",
+        "S100",
+        "S109",
+        "S116",
+        "S124",
+        "S136"
+      ],
+      "val_signers": [
+        "S13",
+        "S36",
+        "S58",
+        "S178"
+      ],
+      "test_signers": [
+        "S21",
+        "S22",
+        "S48",
+        "S57",
+        "S142"
+      ],
+      "anchor_train_signers": [
+        "S109"
+      ],
+      "anchor_all_in_train": true,
+      "summary": {
+        "train": {
+          "num_signers": 19,
+          "num_samples": 4742,
+          "num_labels": 30,
+          "missing_labels": []
+        },
+        "val": {
+          "num_signers": 4,
+          "num_samples": 1008,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        },
+        "test": {
+          "num_signers": 5,
+          "num_samples": 1227,
+          "num_labels": 29,
+          "missing_labels": [
+            "HSH"
+          ]
+        }
+      }
+    }
+  ]
+}

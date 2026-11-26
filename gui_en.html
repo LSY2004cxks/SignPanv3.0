@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Language Phonological Parameter Recognition and Automatic Annotation System SignPanv3.0</title>
+<link rel="stylesheet" href="/static/gui.css">
+
+</head>
+<body>
+
+<div class="container">
+    <main class="workspace">
+    <header>
+        <span class="header-kicker"><span class="dot"></span>SignPanv3.0</span>
+        <h1>Sign Language Phonological Parameter Recognition and Automatic Annotation System</h1>
+        <p>Sign Language Phonology: Video event segmentation, four-channel prediction, and human review</p>
+    </header>
+      <div class="utility-bar">
+        <div class="utility-group">
+            <label for="segmentMode">Event segmentation</label>
+            <select id="segmentMode">
+                <option value="auto">BoundaryTCN, with annotation fallback</option>
+                <option value="model">BoundaryTCN only</option>
+                <option value="annotation">Annotation boundaries only</option>
+            </select>
+        </div>
+        <div class="utility-group history-group">
+            <label for="historySelect">Saved annotations</label>
+            <select id="historySelect"><option value="">No saved annotations</option></select>
+            <button class="btn btn-secondary btn-small" onclick="loadHistory()">Open</button>
+            <button class="btn btn-danger btn-small" onclick="deleteHistory()">Delete</button>
+            <button class="btn btn-quiet btn-small" id="historyPrev" onclick="changeHistoryPage(-1)">Previous</button>
+            <span class="history-page" id="historyPage">1 / 1</span>
+            <button class="btn btn-quiet btn-small" id="historyNext" onclick="changeHistoryPage(1)">Next</button>
+            <button class="btn btn-quiet btn-small" onclick="refreshHistory()">Refresh</button>
+            <a class="btn btn-quiet btn-small" href="/about/en">About</a>
+            <a class="btn btn-quiet btn-small" href="/">中文</a>
+        </div>
+      </div>
+      <div class="app-layout">
+      <aside class="input-panel" id="inputPanel">
+        <div class="panel-heading">
+            <span class="panel-step">01</span>
+            <div><h2>Input video</h2><p>Select a local video file</p></div>
+        </div>
+        <div class="upload-zone" id="uploadZone">
+            <div class="icon">MP4</div>
+            <p>Drop a video here, or click to browse</p>
+            <p class="hint">Supports .mp4 / .mov / .avi; any filename is accepted</p>
+            <input type="file" id="fileInput" accept=".mp4,.mov,.avi" hidden>
+        </div>
+
+        <div class="video-preview" id="videoPreview" style="display:none;">
+            <video id="videoPlayer" controls></video>
+            <p class="video-name" id="videoName"></p>
+        </div>
+
+        <div class="controls-row">
+            <button class="btn btn-primary" id="predictBtn" disabled onclick="startPredict()">Run prediction</button>
+            <button class="btn btn-secondary" id="manualSegBtn" disabled onclick="startManualSegmentation()">Manual segment</button>
+            <button class="btn btn-secondary" onclick="resetAll()">Reset</button>
+        </div>
+
+        <div class="progress-section" id="progressSection">
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">Preparing...</p>
+        </div>
+      </aside>
+
+      <section class="result-panel">
+        <div class="panel-heading">
+            <span class="panel-step">02</span>
+            <div><h2>Utterance annotation and review</h2><p>Review and revise four phonological tiers in time order</p></div>
+        </div>
+        <div class="result-empty" id="resultEmpty">
+            <div class="empty-visual">SP</div>
+            <h3 id="emptyTitle">Waiting for predictions</h3>
+            <p id="emptyMessage">Upload a video on the left and run prediction. Event results will appear here.</p>
+            <div class="empty-channels">
+                <span>Handshape</span>
+                <span>Movement</span>
+                <span>Location</span>
+                <span>Orientation</span>
+            </div>
+        </div>
+        <div class="results" id="resultsSection">
+            <div class="results-header">
+                <h2>Utterance annotation</h2>
+                <div class="results-actions">
+                    <button class="btn btn-primary btn-small" id="saveBtn" onclick="saveEdits()">Save changes</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('standard_json')">Export JSON (v3.0 reference)</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('csv')">Export CSV</button>
+                    <button class="btn btn-secondary btn-small" onclick="exportResult('eaf')">Export EAF</button>
+                </div>
+            </div>
+            <div class="summary-strip" id="resultSummary"></div>
+            <div class="results-list" id="resultsContent"></div>
+        </div>
+      </section>
+      </div>
+    <footer>
+        <span class="brand">Sign Language Phonological Parameter Recognition and Automatic Annotation System SignPanv3.0</span> · SignPanv3.0 · <a href="/about/en">About and copyright</a>
+    </footer>
+    </main>
+</div>
+
+<script>
+/* ============================================================
+   业务逻辑（保持不变，仅做最小必要的结构适配）
+   ============================================================ */
+let currentTaskId = null;
+let pollInterval = null;
+let selectedFile = null;
+let currentResults = [];
+let hasUnsavedChanges = false;
+let previewUrl = null;
+let historyPage = 1;
+let historyPages = 1;
+let currentHistoryName = null;
+const CHANNEL_KEYS = ['handshape', 'movement', 'location', 'orientation'];
+const CHANNEL_COUNT = CHANNEL_KEYS.length;
+const STANDARD_LABELS = {
+    handshape: 'HA HBO HBY HCH HES HFF HJI HM HMQ HNG HNI HSE HNU HPJ HS HSA HSB HSC HSD HSF HSG HSH HSJ HSK HSL HSM HSO HSQ HSS HSU HSV HSW HSX HSY HWC HX HXX HYB HZH HSN HSP HST HTS HFY HLS HAS HSI HHE HT HLX HB HZ HFS HGG HW HC HTH HUN HMO NOH'.split(' '),
+    location: 'HT HTL HTR HD HDL HDR FC FL FR EYL EYR EBL EBR CL CR NOC LT LD MC CC NC SL SR TTL TTC TTR TML TMC TMR TBL TBC TBR WL WR ULL ULR UAL UAR WFL WFR WBL WBR FBL FBR FFL FFR LBW RBW LFW RFW H P PTO PTI PEO PEI PFO PFI PMO PHO PHI PIO PII PDO PDI PRO PRI PPO PPI OFP OFM PP PT MT MI MM MR MP FT FI FM RF PF NOL'.split(' '),
+    orientation: 'TB TU TL TLU AFB TD TR TRU TLD TRD NOO'.split(' '),
+    movement: 'CI ST CU HOLD NOM TMS TMC TMR TMH TMW TME TML TMA TMT TMN TMI'.split(' ')
+};
+
+const zone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+zone.onclick = () => fileInput.click();
+zone.ondragover = e => { e.preventDefault(); zone.classList.add('dragover'); };
+zone.ondragleave = () => zone.classList.remove('dragover');
+zone.ondrop = e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = () => { if (fileInput.files.length) handleFile(fileInput.files[0]); };
+
+function handleFile(file) {
+    const allowed = ['.mp4','.mov','.avi'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!allowed.includes(ext)) { toast('Please select an .mp4, .mov, or .avi file', 'error'); return; }
+
+    selectedFile = file;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    document.getElementById('videoPlayer').src = previewUrl;
+    document.getElementById('videoPreview').style.display = 'flex';
+    document.getElementById('inputPanel').classList.add('has-video');
+    document.getElementById('videoName').textContent = file.name;
+    document.getElementById('predictBtn').disabled = false;
+    const manualBtn = document.getElementById('manualSegBtn');
+    if (manualBtn) manualBtn.disabled = false;
+    toast('Video loaded: ' + file.name, 'success');
+}
+
+function startManualSegmentation() {
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Start manual segmentation anyway?')) return;
+    if (!currentTaskId) {
+        currentTaskId = 'manual-' + Date.now().toString(36);
+    }
+    renderResults([]);
+    addSegmentAtMs(getPlayheadMs(), newSegmentHandMode);
+}
+
+function startPredict() {
+    if (!selectedFile) return;
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Start a new prediction anyway?')) return;
+    currentHistoryName = null;
+    document.getElementById('predictBtn').disabled = true;
+    document.getElementById('progressSection').style.display = 'block';
+    document.getElementById('resultsSection').style.display = 'none';
+    showEmptyState('Analyzing video', 'Running event segmentation and four-channel prediction. Please wait.');
+    updateProgress(5, 'Uploading video...');
+
+    const formData = new FormData();
+    formData.append('video', selectedFile);
+    formData.append('segment_mode', document.getElementById('segmentMode').value);
+
+    fetch('/upload', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('predictBtn').disabled = false;
+                showEmptyState('Upload failed', data.error);
+                toast(data.error, 'error');
+                return;
+            }
+            currentTaskId = data.task_id;
+            updateProgress(15, 'Video received. Starting preprocessing...');
+            pollStatus();
+        })
+        .catch(err => {
+            document.getElementById('predictBtn').disabled = false;
+            showEmptyState('Upload failed', String(err));
+            toast('Upload failed: ' + err, 'error');
+        });
+}
+
+function pollStatus() {
+    pollInterval = setInterval(() => {
+        fetch('/status/' + currentTaskId)
+            .then(r => r.json())
+            .then(data => {
+                updateProgress(data.progress, statusText(data.status));
+                if (data.status === 'done') {
+                    clearInterval(pollInterval);
+                    updateProgress(100, 'Prediction complete');
+                    document.getElementById('predictBtn').disabled = false;
+                    renderResults(data.result);
+                    toast('Prediction complete', 'success');
+                } else if (data.status === 'error') {
+                    clearInterval(pollInterval);
+                    updateProgress(0, 'Auto-segmentation failed; switched to manual segmentation');
+                    document.getElementById('predictBtn').disabled = false;
+                    renderResults([]);
+                    toast((data.error || 'No auto segments found') + ' · You can add segments manually on the timeline', 'error');
+                }
+            })
+            .catch(error => {
+                clearInterval(pollInterval);
+                document.getElementById('predictBtn').disabled = false;
+                showEmptyState('Connection lost', 'Could not retrieve task status. Check the backend service.');
+                toast('Status request failed: ' + error, 'error');
+            });
+    }, 1000);
+}
+
+function updateProgress(pct, text) {
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressText').textContent = text;
+}
+
+function statusText(s) {
+    return {queued:'Queued...', processing:'Processing...', done:'Done', error:'Failed'}[s] || s;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[ch]);
+}
+
+function showEmptyState(title, message) {
+    document.querySelector('.result-panel').classList.remove('result-ready');
+    document.getElementById('resultEmpty').style.display = 'grid';
+    document.getElementById('emptyTitle').textContent = title;
+    document.getElementById('emptyMessage').textContent = message;
+}
+
+const MIN_ANNOTATION_MS = 100;
+
+function isUnannotatedSpan(start, end) {
+    return Number(end) - Number(start) < MIN_ANNOTATION_MS;
+}
+
+function resultsForDisplay(results) {
+    return results.map((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        if (!isUnannotatedSpan(start, end)) return item;
+        const copy = JSON.parse(JSON.stringify(item));
+        Object.values(copy.channels || {}).forEach(channel => {
+            if (!channel || typeof channel !== 'object') return;
+            channel.prediction = {label: '', conf: null, topk: []};
+        });
+        return copy;
+    });
+}
+
+function intervalFor(item, index) {
+    const standard = item.standard || {};
+    if (Number.isFinite(Number(standard.start_ms)) &&
+        Number.isFinite(Number(standard.end_ms)) &&
+        Number(standard.start_ms) < Number(standard.end_ms)) {
+        return [Number(standard.start_ms), Number(standard.end_ms)];
+    }
+    const span = item.segmentation?.span || {};
+    const fps = Number(item.segmentation?.fps) || 30;
+    if (Number.isFinite(Number(span.start_frame)) &&
+        Number.isFinite(Number(span.end_frame))) {
+        return [
+            Math.round(Number(span.start_frame) * 1000 / fps),
+            Math.round(Number(span.end_frame) * 1000 / fps)
+        ];
+    }
+    return [index * 1000, (index + 1) * 1000];
+}
+
+function formatCutLabel(ms) {
+    return `${(Number(ms) / 1000).toFixed(2)}s`;
+}
+
+function segmentOf(item, index, segmentIds) {
+    const [start, end] = intervalFor(item, index);
+    const key = `${start}:${end}`;
+    if (!segmentIds.has(key)) segmentIds.set(key, `S${segmentIds.size + 1}`);
+    const standard = item.standard || {};
+    const hand = String(item.hand || '').toLowerCase();
+    return {
+        start,
+        end,
+        segmentId: standard.segment_id || segmentIds.get(key),
+        role: standard.hand_role || (hand === 'left' ? 'H2' : 'H1'),
+        side: hand === 'left' ? 'L' : hand === 'right' ? 'R' : '—'
+    };
+}
+
+let newSegmentHandMode = 'both';
+
+function inferDefaultFps(results = currentResults) {
+    for (const item of results || []) {
+        const fps = Number(item?.segmentation?.fps || item?.fps);
+        if (Number.isFinite(fps) && fps > 0) return fps;
+    }
+    return 30;
+}
+
+function syncEventSpanFromMs(event, fps = inferDefaultFps()) {
+    if (!event || !event.standard) return;
+    const startMs = Number(event.standard.start_ms);
+    const endMs = Number(event.standard.end_ms);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+    event.segmentation = event.segmentation || {};
+    const actualFps = Number(event.segmentation.fps) || fps || 30;
+    event.segmentation.fps = actualFps;
+    const startFrame = Math.max(0, Math.round(startMs * actualFps / 1000));
+    const endFrame = Math.max(startFrame + 1, Math.round(endMs * actualFps / 1000));
+    event.segmentation.span = {start_frame: startFrame, end_frame: endFrame};
+}
+
+function ensureStandardMetadata(results = currentResults) {
+    const segmentIds = new Map();
+    results.forEach((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        const key = `${start}:${end}`;
+        if (!segmentIds.has(key)) segmentIds.set(key, `S${segmentIds.size + 1}`);
+        const hand = String(item.hand || 'right').toLowerCase();
+        item.standard = item.standard || {};
+        item.standard.start_ms = start;
+        item.standard.end_ms = end;
+        item.standard.segment_id = segmentIds.get(key);
+        item.standard.hand_role = item.standard.hand_role || (hand === 'left' ? 'H2' : 'H1');
+        item.standard.participation = item.standard.participation || 'active';
+        item.standard.annotation_status = item.standard.annotation_status || 'observed';
+    });
+}
+
+function nextEventIdForHand(hand, results = currentResults) {
+    const prefix = String(hand || 'right').toLowerCase() === 'left' ? 'L' : 'R';
+    const pattern = new RegExp(`^${prefix}_Event_(\\d+)$`, 'i');
+    let maxNum = 0;
+    (results || []).forEach(item => {
+        const match = String(item?.event_id || '').match(pattern);
+        if (match) maxNum = Math.max(maxNum, Number(match[1]) || 0);
+    });
+    return `${prefix}_Event_${maxNum + 1}`;
+}
+
+function createManualEvent({hand, startMs, endMs, templateEvent = null, source = 'manual'}) {
+    const normalizedHand = String(hand || 'right').toLowerCase() === 'left' ? 'left' : 'right';
+    const role = normalizedHand === 'left' ? 'H2' : 'H1';
+    const ref = templateEvent || currentResults[0] || {};
+    const signerId = ref.signer_id || 'S000';
+    const videoId = ref.video_id || 'V000';
+    const eventId = nextEventIdForHand(normalizedHand);
+    const sampleId = `${signerId}_${videoId}_${eventId}_${normalizedHand.toUpperCase()}`;
+    const defaultLabels = {
+        handshape: 'NOH',
+        location: 'NOL',
+        orientation: 'NOO',
+        movement: 'NOM'
+    };
+    const channels = {};
+    CHANNEL_KEYS.forEach(key => {
+        if (templateEvent?.channels?.[key]) {
+            const copied = JSON.parse(JSON.stringify(templateEvent.channels[key]));
+            copied.event_id = eventId;
+            copied.sample_id = sampleId;
+            channels[key] = copied;
+        } else {
+            channels[key] = {
+                schema: 'sign_phonology_v1',
+                sample_id: sampleId,
+                event_id: eventId,
+                channel: key,
+                prediction: {
+                    label: defaultLabels[key],
+                    conf: 1.0,
+                    topk: [{label: defaultLabels[key], prob: 1.0}]
+                },
+                metadata: {
+                    signer_id: signerId,
+                    video_id: videoId,
+                    hand: normalizedHand,
+                    source: 'human_annotation',
+                    human_modified: false
+                },
+                status: {code: 'OK', message: 'manual segment'}
+            };
+        }
+    });
+    const created = {
+        schema: 'sign_phonology_v1',
+        split: 'test',
+        sample_id: sampleId,
+        event_id: eventId,
+        signer_id: signerId,
+        video_id: videoId,
+        hand: normalizedHand,
+        channels,
+        segmentation: {
+            source,
+            fps: inferDefaultFps(),
+            span: {start_frame: 0, end_frame: 1}
+        },
+        standard: {
+            start_ms: Math.max(0, Math.round(Number(startMs) || 0)),
+            end_ms: Math.max(MIN_ANNOTATION_MS, Math.round(Number(endMs) || 800)),
+            hand_role: role,
+            participation: 'active',
+            annotation_status: 'observed',
+            source: 'human_annotation',
+            modified_at: new Date().toISOString()
+        }
+    };
+    syncEventSpanFromMs(created);
+    return created;
+}
+
+function collectTimelineSegments(results = currentResults) {
+    ensureStandardMetadata(results);
+    const map = new Map();
+    (results || []).forEach((item, index) => {
+        const [start, end] = intervalFor(item, index);
+        if (isUnannotatedSpan(start, end)) return;
+        const id = item.standard?.segment_id || `S${index + 1}`;
+        const entry = map.get(id) || {
+            id, start, end, roles: new Set(), hands: new Set(), indices: [], events: []
+        };
+        entry.start = Math.min(entry.start, start);
+        entry.end = Math.max(entry.end, end);
+        if (item.standard?.hand_role) entry.roles.add(item.standard.hand_role);
+        if (item.hand) entry.hands.add(String(item.hand).toLowerCase());
+        entry.indices.push(index);
+        entry.events.push(item);
+        map.set(id, entry);
+    });
+    return [...map.values()].sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function getPlayheadMs() {
+    const video = document.getElementById('videoPlayer');
+    return Math.max(0, Math.round(Number(video?.currentTime || 0) * 1000));
+}
+
+function findActiveSegment(ms = getPlayheadMs()) {
+    const segments = collectTimelineSegments();
+    let found = segments.find(seg => ms >= seg.start && ms < seg.end);
+    if (!found) found = segments.find(seg => ms === seg.end && seg.end > seg.start);
+    return found || null;
+}
+
+function resolveHandsForMode(mode = newSegmentHandMode) {
+    if (mode === 'H1' || mode === 'right') return ['right'];
+    if (mode === 'H2' || mode === 'left') return ['left'];
+    return ['left', 'right'];
+}
+
+function addSegmentAtMs(targetMs = getPlayheadMs(), handMode = newSegmentHandMode) {
+    closeTimelineContextMenu();
+    const hands = resolveHandsForMode(handMode);
+    const segments = collectTimelineSegments();
+    let startMs = Math.max(0, Math.round(Number(targetMs) || 0));
+    const insideSeg = segments.find(seg => startMs >= seg.start && startMs < seg.end);
+
+    if (insideSeg) {
+        const missingHands = hands.filter(h => !insideSeg.hands.has(h));
+        if (missingHands.length > 0) {
+            missingHands.forEach(hand => {
+                currentResults.push(createManualEvent({
+                    hand,
+                    startMs: insideSeg.start,
+                    endMs: insideSeg.end,
+                    source: 'manual_add'
+                }));
+            });
+            hasUnsavedChanges = true;
+            renderResults(currentResults, true);
+            syncUtteranceToPlayhead(insideSeg.start);
+            toast(`Added missing hand to ${insideSeg.id}`, 'success');
+            return;
+        }
+        startMs = insideSeg.end;
+    }
+
+    const video = document.getElementById('videoPlayer');
+    const videoDurationMs = Number(video?.duration) * 1000;
+    const nextSeg = segments.find(seg => seg.start > startMs);
+    let endMs = startMs + 800;
+    if (nextSeg && nextSeg.start - startMs >= MIN_ANNOTATION_MS) {
+        endMs = Math.min(endMs, nextSeg.start);
+    } else if (nextSeg && nextSeg.start - startMs < MIN_ANNOTATION_MS) {
+        const lastEnd = segments.length ? segments[segments.length - 1].end : startMs;
+        startMs = lastEnd;
+        endMs = startMs + 800;
+    }
+    if (Number.isFinite(videoDurationMs) && videoDurationMs > startMs + MIN_ANNOTATION_MS) {
+        endMs = Math.min(endMs, Math.round(videoDurationMs));
+    }
+    if (endMs - startMs < MIN_ANNOTATION_MS) {
+        endMs = startMs + Math.max(MIN_ANNOTATION_MS, 500);
+    }
+
+    hands.forEach(hand => {
+        currentResults.push(createManualEvent({
+            hand,
+            startMs,
+            endMs,
+            source: 'manual_add'
+        }));
+    });
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    if (video && Number.isFinite(Number(video.duration))) {
+        video.currentTime = startMs / 1000;
+    }
+    syncUtteranceToPlayhead(startMs);
+    toast(`Created segment (${formatCutLabel(startMs)}–${formatCutLabel(endMs)})`, 'success');
+}
+
+function splitSegmentAtMs(splitMs = null, segmentId = null) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const targetSeg = segmentId
+        ? segments.find(seg => seg.id === segmentId)
+        : findActiveSegment(splitMs ?? getPlayheadMs());
+    if (!targetSeg) {
+        toast('Park the playhead inside a segment or right-click a segment to split', 'error');
+        return;
+    }
+    let cutMs = splitMs !== null && Number.isFinite(Number(splitMs))
+        ? Math.round(Number(splitMs))
+        : getPlayheadMs();
+    if (cutMs <= targetSeg.start + MIN_ANNOTATION_MS - 1 || cutMs >= targetSeg.end - MIN_ANNOTATION_MS + 1) {
+        cutMs = Math.round((targetSeg.start + targetSeg.end) / 2);
+    }
+    if (cutMs - targetSeg.start < MIN_ANNOTATION_MS || targetSeg.end - cutMs < MIN_ANNOTATION_MS) {
+        toast('Both resulting segments must be at least 100 ms', 'error');
+        return;
+    }
+
+    const addedEvents = [];
+    targetSeg.events.forEach(event => {
+        event.standard = event.standard || {};
+        event.standard.start_ms = targetSeg.start;
+        event.standard.end_ms = cutMs;
+        event.standard.modified_at = new Date().toISOString();
+        event.standard.source = 'human_annotation';
+        syncEventSpanFromMs(event);
+        addedEvents.push(createManualEvent({
+            hand: event.hand,
+            startMs: cutMs,
+            endMs: targetSeg.end,
+            templateEvent: event,
+            source: 'manual_split'
+        }));
+    });
+    currentResults.push(...addedEvents);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    const video = document.getElementById('videoPlayer');
+    if (video && Number.isFinite(Number(video.duration))) {
+        video.currentTime = cutMs / 1000;
+    }
+    syncUtteranceToPlayhead(cutMs);
+    toast(`Split segment at ${formatCutLabel(cutMs)}`, 'success');
+}
+
+function mergeSegmentWithNext(segmentId = null) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const currentSeg = segmentId
+        ? segments.find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!currentSeg) {
+        toast('Select or park inside a segment to merge', 'error');
+        return;
+    }
+    const segIdx = segments.findIndex(seg => seg.id === currentSeg.id);
+    const nextSeg = segIdx >= 0 ? segments[segIdx + 1] : null;
+    if (!nextSeg) {
+        toast('No following segment to merge with', 'error');
+        return;
+    }
+    const mergedStart = currentSeg.start;
+    const mergedEnd = nextSeg.end;
+    const keptHands = new Set();
+
+    currentSeg.events.forEach(event => {
+        const hand = String(event.hand || '').toLowerCase();
+        keptHands.add(hand);
+        event.standard = event.standard || {};
+        event.standard.start_ms = mergedStart;
+        event.standard.end_ms = mergedEnd;
+        syncEventSpanFromMs(event);
+    });
+
+    const toRemove = new Set();
+    nextSeg.events.forEach(event => {
+        const hand = String(event.hand || '').toLowerCase();
+        if (!keptHands.has(hand)) {
+            keptHands.add(hand);
+            event.standard = event.standard || {};
+            event.standard.start_ms = mergedStart;
+            event.standard.end_ms = mergedEnd;
+            syncEventSpanFromMs(event);
+        } else {
+            toRemove.add(event);
+        }
+    });
+
+    currentResults = currentResults.filter(item => !toRemove.has(item));
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    syncUtteranceToPlayhead(mergedStart);
+    toast(`Merged ${currentSeg.id} with ${nextSeg.id}`, 'success');
+}
+
+function addMissingHandToSegment(segmentId) {
+    closeTimelineContextMenu();
+    const segments = collectTimelineSegments();
+    const targetSeg = segments.find(seg => seg.id === segmentId) || findActiveSegment();
+    if (!targetSeg) return;
+    const missing = ['left', 'right'].filter(h => !targetSeg.hands.has(h));
+    if (!missing.length) return;
+    missing.forEach(hand => {
+        currentResults.push(createManualEvent({
+            hand,
+            startMs: targetSeg.start,
+            endMs: targetSeg.end,
+            source: 'manual_add'
+        }));
+    });
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    syncUtteranceToPlayhead(targetSeg.start);
+    toast(`Added other hand to ${targetSeg.id}`, 'success');
+}
+
+function deleteSegmentById(segmentId = null) {
+    closeTimelineContextMenu();
+    const targetSeg = segmentId
+        ? collectTimelineSegments().find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!targetSeg) {
+        toast('Park the playhead inside the segment to delete', 'error');
+        return;
+    }
+    currentResults = currentResults.filter(item => item.standard?.segment_id !== targetSeg.id);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    toast(`Deleted segment ${targetSeg.id}`, 'success');
+}
+
+function deleteHandEvent(eventIndex) {
+    closeTimelineContextMenu();
+    const target = currentResults[eventIndex];
+    if (!target) return;
+    currentResults.splice(eventIndex, 1);
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+    toast('Deleted hand event', 'success');
+}
+
+async function repredictSegment(segmentId = null) {
+    closeTimelineContextMenu();
+    if (!currentTaskId) {
+        toast('No active task for backend re-prediction', 'error');
+        return;
+    }
+    const targetSeg = segmentId
+        ? collectTimelineSegments().find(seg => seg.id === segmentId)
+        : findActiveSegment();
+    if (!targetSeg) {
+        toast('Park inside or select a segment to re-predict', 'error');
+        return;
+    }
+    toast(`Re-predicting 4 channels for ${targetSeg.id}...`, 'success');
+    try {
+        const response = await fetch(`/api/repredict/${encodeURIComponent(currentTaskId)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                result: currentResults,
+                segment_id: targetSeg.id
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Re-prediction failed');
+        currentResults = data.result || currentResults;
+        hasUnsavedChanges = true;
+        renderResults(currentResults, true);
+        syncUtteranceToPlayhead(targetSeg.start);
+        toast(`Updated predictions for ${targetSeg.id}`, 'success');
+    } catch (error) {
+        toast('Re-predict: ' + error.message, 'error');
+    }
+}
+
+function editStandard(eventIndex, field, value, numeric = false) {
+    const event = currentResults[eventIndex];
+    if (!event) return;
+    ensureStandardMetadata(currentResults);
+    const nextValue = numeric ? Math.round(Number(value)) : String(value).trim();
+    if (numeric && (!Number.isFinite(nextValue) || nextValue < 0)) {
+        toast('Time must be a non-negative integer in ms', 'error');
+        renderResults(currentResults, true);
+        return;
+    }
+    const segmentId = event.standard.segment_id;
+    if (field === 'start_ms' || field === 'end_ms') {
+        const start = field === 'start_ms' ? nextValue : Number(event.standard.start_ms);
+        const end = field === 'end_ms' ? nextValue : Number(event.standard.end_ms);
+        if (start >= end) {
+            toast('Start time must be less than end time', 'error');
+            renderResults(currentResults, true);
+            return;
+        }
+        currentResults.filter(item => item.standard?.segment_id === segmentId)
+            .forEach(item => {
+                item.standard[field] = nextValue;
+                syncEventSpanFromMs(item);
+            });
+    } else {
+        event.standard[field] = nextValue;
+    }
+    event.standard.modified_at = new Date().toISOString();
+    event.standard.source = 'human_annotation';
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function msFromRailEvent(event, maxMs) {
+    const rail = event.currentTarget.closest?.('.timeline-rail') || event.target.closest?.('.timeline-rail');
+    if (!rail) return getPlayheadMs();
+    const rect = rail.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(rect.width, 1)));
+    return Math.round(ratio * (Number(maxMs) || 1000));
+}
+
+function handleRailDoubleClick(event, roleHint, maxMs) {
+    if (event.target.closest('.timeline-tier-block')) return;
+    const clickMs = msFromRailEvent(event, maxMs);
+    addSegmentAtMs(clickMs, roleHint || newSegmentHandMode);
+}
+
+function beginSegmentResize(event, segmentId, field, maxMs) {
+    event.stopPropagation();
+    event.preventDefault();
+    closeTimelineContextMenu();
+    const rail = event.currentTarget.closest('.timeline-rail');
+    if (!rail) return;
+    const rect = rail.getBoundingClientRect();
+    const segments = collectTimelineSegments();
+    const targetSeg = segments.find(seg => seg.id === segmentId);
+    if (!targetSeg) return;
+
+    let latestMs = field === 'start_ms' ? targetSeg.start : targetSeg.end;
+    const onMove = moveEvent => {
+        const ratio = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / Math.max(rect.width, 1)));
+        const rawMs = Math.round(ratio * (Number(maxMs) || 1000));
+        if (field === 'start_ms') {
+            latestMs = Math.max(0, Math.min(rawMs, targetSeg.end - MIN_ANNOTATION_MS));
+        } else {
+            latestMs = Math.max(targetSeg.start + MIN_ANNOTATION_MS, rawMs);
+        }
+    };
+    const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        currentResults
+            .filter(item => item.standard?.segment_id === segmentId)
+            .forEach(item => {
+                item.standard[field] = latestMs;
+                item.standard.modified_at = new Date().toISOString();
+                item.standard.source = 'human_annotation';
+                syncEventSpanFromMs(item);
+            });
+        hasUnsavedChanges = true;
+        renderResults(currentResults, true);
+        syncUtteranceToPlayhead(field === 'start_ms' ? latestMs : targetSeg.start);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, {once: true});
+}
+
+function ensureContextMenuElement() {
+    let menu = document.getElementById('timelineContextMenu');
+    if (!menu) {
+        menu = document.createElement('div');
+        menu.id = 'timelineContextMenu';
+        menu.className = 'timeline-context-menu';
+        document.body.appendChild(menu);
+    }
+    return menu;
+}
+
+function closeTimelineContextMenu() {
+    const menu = document.getElementById('timelineContextMenu');
+    if (menu) menu.classList.remove('open');
+}
+
+function openTimelineContextMenu(event, ctx) {
+    event.preventDefault();
+    event.stopPropagation();
+    const clickMs = msFromRailEvent(event, ctx.maxMs);
+    const menu = ensureContextMenuElement();
+    const segments = collectTimelineSegments();
+    const seg = ctx.segmentId
+        ? segments.find(s => s.id === ctx.segmentId)
+        : segments.find(s => clickMs >= s.start && clickMs < s.end);
+
+    const items = [];
+    items.push(`<div class="context-menu-header">Timeline: ${formatCutLabel(clickMs)} (${clickMs} ms)${seg ? ` · ${escapeHtml(seg.id)}` : ''}</div>`);
+
+    if (seg) {
+        const canSplitHere = clickMs - seg.start >= MIN_ANNOTATION_MS && seg.end - clickMs >= MIN_ANNOTATION_MS;
+        items.push(`<button type="button" class="context-menu-item" onclick="splitSegmentAtMs(${canSplitHere ? clickMs : 'null'}, '${escapeHtml(seg.id)}')">
+            <span>✂ ${canSplitHere ? `Split here (${formatCutLabel(clickMs)})` : `Split ${escapeHtml(seg.id)} at midpoint`}</span>
+            <span class="timeline-tool-kbd">S</span>
+        </button>`);
+        if (seg.hands.size < 2) {
+            items.push(`<button type="button" class="context-menu-item" onclick="addMissingHandToSegment('${escapeHtml(seg.id)}')">
+                <span>+ Add missing hand to ${escapeHtml(seg.id)}</span>
+            </button>`);
+        }
+        items.push(`<button type="button" class="context-menu-item" onclick="mergeSegmentWithNext('${escapeHtml(seg.id)}')">
+            <span>⇄ Merge with next segment</span>
+            <span class="timeline-tool-kbd">M</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="repredictSegment('${escapeHtml(seg.id)}')">
+            <span>⟳ Re-predict 4 channels for ${escapeHtml(seg.id)}</span>
+        </button>`);
+        items.push(`<div class="context-menu-divider"></div>`);
+        if (ctx.type === 'hand' && Number.isInteger(ctx.eventIndex) && seg.hands.size >= 2) {
+            items.push(`<button type="button" class="context-menu-item danger" onclick="deleteHandEvent(${ctx.eventIndex})">
+                <span>× Delete ${escapeHtml(ctx.role || '')} hand event only</span>
+            </button>`);
+        }
+        items.push(`<button type="button" class="context-menu-item danger" onclick="deleteSegmentById('${escapeHtml(seg.id)}')">
+            <span>🗑 Delete entire segment ${escapeHtml(seg.id)}</span>
+            <span class="timeline-tool-kbd">Del</span>
+        </button>`);
+    } else {
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'both')">
+            <span>+ New H1+H2 segment here</span>
+            <span class="timeline-tool-kbd">N</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'H1')">
+            <span>+ New H1 (dominant) segment here</span>
+        </button>`);
+        items.push(`<button type="button" class="context-menu-item" onclick="addSegmentAtMs(${clickMs}, 'H2')">
+            <span>+ New H2 (non-dominant) segment here</span>
+        </button>`);
+    }
+
+    menu.innerHTML = items.join('');
+    menu.classList.add('open');
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    menu.style.left = `${Math.min(event.clientX, Math.max(8, vw - 250))}px`;
+    menu.style.top = `${Math.min(event.clientY, Math.max(8, vh - 260))}px`;
+}
+
+document.addEventListener('click', () => closeTimelineContextMenu());
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeTimelineContextMenu();
+        return;
+    }
+    const tag = (event.target?.tagName || '').toLowerCase();
+    if (['input', 'select', 'textarea'].includes(tag) || event.target?.isContentEditable) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const resultsVisible = document.querySelector('.result-panel')?.classList.contains('result-ready');
+    if (!resultsVisible) return;
+
+    const key = event.key.toLowerCase();
+    if (key === 'n') {
+        event.preventDefault();
+        addSegmentAtMs(getPlayheadMs(), newSegmentHandMode);
+    } else if (key === 's') {
+        event.preventDefault();
+        splitSegmentAtMs();
+    } else if (key === 'm') {
+        event.preventDefault();
+        mergeSegmentWithNext();
+    } else if (event.key === 'Delete') {
+        event.preventDefault();
+        deleteSegmentById();
+    }
+});
+
+function syncUtteranceToPlayhead(currentMs) {
+    const ms = Number(currentMs);
+    const tokens = [...document.querySelectorAll('.utterance-token')];
+    const status = document.getElementById('utteranceNow');
+    if (!Number.isFinite(ms)) {
+        if (status) status.textContent = '';
+        return;
+    }
+    const active = new Set();
+    const markInside = (includeEndpoint) => {
+        tokens.forEach(token => {
+            const start = Number(token.dataset.start);
+            const end = Number(token.dataset.end);
+            const inside = ms >= start && ms < end;
+            const atEnd = includeEndpoint && ms === end && end > start;
+            if (inside || atEnd) active.add(token.dataset.segment);
+        });
+    };
+    markInside(false);
+    if (!active.size) markInside(true);
+    const showSegment = segmentId => active.has(segmentId);
+    tokens.forEach(token => {
+        token.classList.toggle('is-idle', !showSegment(token.dataset.segment));
+    });
+    document.querySelectorAll('.annotation-matrix [data-segment]').forEach(node => {
+        node.classList.toggle('is-idle', !showSegment(node.dataset.segment));
+    });
+    document.querySelectorAll('.timeline-tier-block[data-segment]').forEach(node => {
+        node.classList.toggle('is-active', showSegment(node.dataset.segment));
+    });
+    if (!status) return;
+    if (!active.size) {
+        status.textContent = `Playhead (${formatCutLabel(ms)}) is outside any segment (press N or click "+ New at playhead" to add)`;
+        status.classList.add('is-gap');
+        return;
+    }
+    const parts = [...active].map(id => {
+        const sample = tokens.find(token => token.dataset.segment === id);
+        return `${id} · ${formatCutLabel(sample.dataset.start)}–${formatCutLabel(sample.dataset.end)}`;
+    });
+    status.textContent = `Current segment ${parts.join('; ')}`;
+    status.classList.remove('is-gap');
+}
+
+function renderTimeline(results, metas) {
+    const videoPlayer = document.getElementById('videoPlayer');
+    const annotationEnd = Math.max(1000, ...metas.map(meta => meta.end));
+    const videoDurationMs = Number(videoPlayer.duration) * 1000;
+    const maximum = Math.max(
+        Math.ceil(annotationEnd / 1000) * 1000,
+        Number.isFinite(videoDurationMs) && videoDurationMs > 0 ? Math.round(videoDurationMs) : 3000
+    );
+    const cutTimes = [];
+    const seenCuts = new Set();
+    metas.forEach(meta => {
+        [meta.start, meta.end].forEach(value => {
+            const ms = Math.round(Number(value));
+            if (!Number.isFinite(ms) || ms < 0 || ms > maximum || seenCuts.has(ms)) return;
+            seenCuts.add(ms);
+            cutTimes.push(ms);
+        });
+    });
+    cutTimes.sort((a, b) => a - b);
+    const scale = cutTimes.map(value => {
+        const percent = value / maximum * 100;
+        const edge = percent <= 6 ? 'first' : percent >= 94 ? 'last' : '';
+        return `<span class="timeline-scale-mark ${edge}"
+            style="left:${percent}%" title="${value} ms">${formatCutLabel(value)}</span>`;
+    }).join('');
+    const currentMs = Math.min(
+        maximum,
+        Math.max(0, Number(videoPlayer.currentTime || 0) * 1000)
+    );
+    const progressPercent = currentMs / maximum * 100;
+    const segments = new Map();
+    metas.forEach((meta, index) => {
+        const segment = segments.get(meta.segmentId) || {
+            id: meta.segmentId, start: meta.start, end: meta.end,
+            roles: new Set(), firstIndex: index
+        };
+        segment.start = Math.min(segment.start, meta.start);
+        segment.end = Math.max(segment.end, meta.end);
+        segment.roles.add(meta.role);
+        segments.set(meta.segmentId, segment);
+    });
+    const visibleSegments = [...segments.values()].filter(segment =>
+        !isUnannotatedSpan(segment.start, segment.end)
+    );
+    const segmentBlocks = visibleSegments.map(segment => {
+        const left = Math.max(0, segment.start / maximum * 100);
+        const width = Math.max(0.7, (segment.end - segment.start) / maximum * 100);
+        const roles = [...segment.roles].sort().join('+');
+        const label = `${segment.id} · ${roles}`;
+        return `<button class="timeline-tier-block segment-block"
+            data-segment="${escapeHtml(segment.id)}"
+            data-start="${segment.start}" data-end="${segment.end}"
+            style="left:${left}%;width:${width}%"
+            title="${escapeHtml(label)} · ${segment.start}-${segment.end} ms (drag edges to resize, right-click for menu)"
+            onclick="seekToMs(${segment.start}, ${segment.end})"
+            oncontextmenu="openTimelineContextMenu(event, {type:'segment', segmentId:'${escapeHtml(segment.id)}', maxMs:${maximum}})">
+            <span class="block-resize-handle left" onpointerdown="beginSegmentResize(event, '${escapeHtml(segment.id)}', 'start_ms', ${maximum})" onclick="event.stopPropagation()"></span>
+            ${escapeHtml(label)}
+            <span class="block-resize-handle right" onpointerdown="beginSegmentResize(event, '${escapeHtml(segment.id)}', 'end_ms', ${maximum})" onclick="event.stopPropagation()"></span>
+        </button>`;
+    }).join('');
+    const timelineTiers = [
+        ['Handshape', 'handshape'],
+        ['Location', 'location'],
+        ['Orientation', 'orientation'],
+        ['Movement', 'movement']
+    ];
+    const handLanes = ['H1', 'H2'].flatMap(role =>
+        timelineTiers.map(([tierName, key]) => {
+            const blocks = results.map((item, index) => {
+                const meta = metas[index];
+                if (meta.role !== role) return '';
+                if (isUnannotatedSpan(meta.start, meta.end)) return '';
+                const left = Math.max(0, meta.start / maximum * 100);
+                const width = Math.max(0.7, (meta.end - meta.start) / maximum * 100);
+                const value = item.channels?.[key]?.prediction?.label || '—';
+                return `<button class="timeline-tier-block ${role === 'H2' ? 'h2' : ''}"
+                    data-segment="${escapeHtml(meta.segmentId)}"
+                    data-start="${meta.start}" data-end="${meta.end}"
+                    style="left:${left}%;width:${width}%"
+                    title="${escapeHtml(meta.segmentId)} · ${escapeHtml(value)} · ${meta.start}-${meta.end} ms"
+                    onclick="seekToMs(${meta.start}, ${meta.end})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'hand', segmentId:'${escapeHtml(meta.segmentId)}', eventIndex:${index}, role:'${role}', maxMs:${maximum}})">${escapeHtml(value)}</button>`;
+            }).join('');
+            return `<div class="timeline-lane">
+                <span class="timeline-lane-label">${role} · ${tierName}</span>
+                <div class="timeline-rail"
+                    ondblclick="handleRailDoubleClick(event, '${role}', ${maximum})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'rail', role:'${role}', maxMs:${maximum}})">${blocks}</div>
+            </div>`;
+        })
+    ).join('');
+    return `<section class="timeline-panel">
+        <div class="timeline-heading">
+            <strong>SignPan multi-tier timeline (ELAN-style segmentation)</strong>
+            <span>${visibleSegments.length} segments / ${metas.filter(meta => !isUnannotatedSpan(meta.start, meta.end)).length} hand annotations · drag edges to resize, double-click rail or right-click to edit</span>
+        </div>
+        <div class="timeline-toolbar" role="toolbar" aria-label="Segmentation toolbar">
+            <select aria-label="New segment hand mode" onchange="newSegmentHandMode = this.value">
+                <option value="both" ${newSegmentHandMode === 'both' ? 'selected' : ''}>New: H1+H2 (Both)</option>
+                <option value="H1" ${newSegmentHandMode === 'H1' ? 'selected' : ''}>New: H1 only</option>
+                <option value="H2" ${newSegmentHandMode === 'H2' ? 'selected' : ''}>New: H2 only</option>
+            </select>
+            <button type="button" class="timeline-tool-btn primary" onclick="addSegmentAtMs(getPlayheadMs(), newSegmentHandMode)">
+                + New at playhead <span class="timeline-tool-kbd">N</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="splitSegmentAtMs()">
+                ✂ Split at playhead <span class="timeline-tool-kbd">S</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="mergeSegmentWithNext()">
+                ⇄ Merge next <span class="timeline-tool-kbd">M</span>
+            </button>
+            <button type="button" class="timeline-tool-btn" onclick="repredictSegment()">
+                ⟳ Re-predict
+            </button>
+            <button type="button" class="timeline-tool-btn danger" onclick="deleteSegmentById()">
+                🗑 Delete segment <span class="timeline-tool-kbd">Del</span>
+            </button>
+            <span class="timeline-tool-hint">Tip: Right-click any lane or block for context menu; drag segment edges to adjust boundaries</span>
+        </div>
+        <div class="timeline-lanes">
+            <div class="timeline-lane">
+                <span class="timeline-lane-label">Video progress</span>
+                <div class="timeline-progress-wrap">
+                    <input class="timeline-progress" id="timelineProgress"
+                        type="range" min="0" max="${maximum}" step="1" value="${currentMs}"
+                        style="background:linear-gradient(90deg,var(--primary) ${progressPercent}%,#101c2f ${progressPercent}%)"
+                        aria-label="Video playback position"
+                        onpointerdown="beginVideoScrub(event)"
+                        oninput="seekVideoProgress(this)"
+                        onchange="endVideoScrub()">
+                    ${scale}
+                </div>
+            </div>
+            <div class="timeline-lane">
+                <span class="timeline-lane-label">Segment</span>
+                <div class="timeline-rail"
+                    ondblclick="handleRailDoubleClick(event, newSegmentHandMode, ${maximum})"
+                    oncontextmenu="openTimelineContextMenu(event, {type:'rail', role:newSegmentHandMode, maxMs:${maximum}})">${segmentBlocks}</div>
+            </div>
+            ${handLanes}
+        </div>
+    </section>`;
+}
+
+function renderResults(results, preserveState = false) {
+    if (!preserveState) {
+        currentResults = JSON.parse(JSON.stringify(results || []));
+        hasUnsavedChanges = false;
+    }
+    results = currentResults;
+    ensureStandardMetadata(results);
+    document.querySelector('.result-panel').classList.add('result-ready');
+    document.getElementById('resultEmpty').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'block';
+    const container = document.getElementById('resultsContent');
+    container.innerHTML = '';
+    if (!preserveState) {
+        container.scrollTop = 0;
+        container.scrollLeft = 0;
+    }
+
+    renderSummary(results);
+    const segmentIds = new Map();
+    const metas = results.map((item, index) => segmentOf(item, index, segmentIds));
+
+    if (!results || results.length === 0) {
+        container.innerHTML = `
+            ${renderTimeline([], [])}
+            <div class="empty-state">
+                <div class="icon">—</div>
+                <p>No active segments</p>
+                <p class="hint">Click "+ New at playhead", double-click an empty timeline rail, or use the button below to create a segment manually.</p>
+                <div style="margin-top:12px;">
+                    <button type="button" class="btn btn-primary btn-small" onclick="addSegmentAtMs(getPlayheadMs(), newSegmentHandMode)">+ Create segment at playhead</button>
+                </div>
+            </div>`;
+        return;
+    }
+
+    const tiers = [
+        {key: 'handshape', name: 'Handshape'},
+        {key: 'movement', name: 'Movement'},
+        {key: 'location', name: 'Location'},
+        {key: 'orientation', name: 'Orientation'},
+    ];
+    const annotationValue = (item, key) =>
+        item.channels?.[key]?.prediction?.label || '—';
+
+    const segmentsHandCount = new Map();
+    metas.forEach(m => {
+        segmentsHandCount.set(m.segmentId, (segmentsHandCount.get(m.segmentId) || 0) + 1);
+    });
+
+    const sequence = results.map((item, index) => {
+        const meta = metas[index];
+        if (isUnannotatedSpan(meta.start, meta.end)) return '';
+        const body = `${escapeHtml(meta.segmentId)} ·
+            ${tiers.map(tier =>
+                `${tier.name.slice(0, 3).toUpperCase()}=${escapeHtml(annotationValue(item, tier.key))}`
+            ).join(' · ')}`;
+        return `
+        <span class="utterance-token"
+            data-segment="${escapeHtml(meta.segmentId)}"
+            data-start="${meta.start}" data-end="${meta.end}">
+            <span class="token-hand">${escapeHtml(meta.role)} · ${meta.side}</span>
+            ${body}
+        </span>`;
+    }).join('');
+
+    const header = results.map((item, index) => {
+        const meta = metas[index];
+        const span = item.segmentation?.span || {};
+        const range = span.start_frame !== undefined
+            ? `${span.start_frame}–${span.end_frame}`
+            : '—';
+        if (isUnannotatedSpan(meta.start, meta.end)) return '';
+        const hasBothHands = (segmentsHandCount.get(meta.segmentId) || 0) >= 2;
+        return `<th scope="col" data-segment="${escapeHtml(meta.segmentId)}"
+            data-start="${meta.start}" data-end="${meta.end}">
+            <span class="event-column-title">${escapeHtml(`${meta.role} · ${meta.segmentId}`)}</span>
+            <span class="event-column-meta">${meta.side} · ${escapeHtml(item.event_id || `E${index + 1}`)} · frames ${escapeHtml(range)}</span>
+            <div class="time-editors">
+                <input type="number" value="${meta.start}" min="0"
+                    title="Start time (ms)" aria-label="Start time (ms)"
+                    onchange="editStandard(${index}, 'start_ms', this.value, true)">
+                <input type="number" value="${meta.end}" min="1"
+                    title="End time (ms)" aria-label="End time (ms)"
+                    onchange="editStandard(${index}, 'end_ms', this.value, true)">
+            </div>
+            <div class="column-seg-actions">
+                <button type="button" class="col-seg-btn" onclick="splitSegmentAtMs(null, '${escapeHtml(meta.segmentId)}')">✂ Split</button>
+                <button type="button" class="col-seg-btn" onclick="mergeSegmentWithNext('${escapeHtml(meta.segmentId)}')">⇄ Merge</button>
+                ${!hasBothHands ? `<button type="button" class="col-seg-btn" onclick="addMissingHandToSegment('${escapeHtml(meta.segmentId)}')">+ Hand</button>` : ''}
+                <button type="button" class="col-seg-btn" onclick="repredictSegment('${escapeHtml(meta.segmentId)}')">⟳ Re-predict</button>
+                ${hasBothHands ? `<button type="button" class="col-seg-btn danger" onclick="deleteHandEvent(${index})">× Del Hand</button>` : ''}
+                <button type="button" class="col-seg-btn danger" onclick="deleteSegmentById('${escapeHtml(meta.segmentId)}')">🗑 Del Seg</button>
+            </div>
+        </th>`;
+    }).join('');
+
+    const rows = tiers.map(tier => {
+        const cells = results.map((item, eventIndex) => {
+            const meta = metas[eventIndex];
+            if (isUnannotatedSpan(meta.start, meta.end)) return '';
+            const channel = item.channels?.[tier.key] || {};
+            const prediction = channel.prediction || {};
+            const metadata = channel.metadata || {};
+            const confidence = Number(prediction.conf);
+            const confidenceText = Number.isFinite(confidence)
+                ? `${(confidence * 100).toFixed(1)}%`
+                : '—';
+            const modified = Boolean(metadata.human_modified);
+            const candidateItems = (prediction.topk || []).length
+                ? prediction.topk
+                : (prediction.label
+                    ? [{label: prediction.label, prob: prediction.conf}]
+                    : []);
+            const candidates = candidateItems
+                .map(candidate => {
+                    const probability = Number(candidate.prob);
+                    const probabilityText = Number.isFinite(probability)
+                        ? `${(probability * 100).toFixed(1)}%`
+                        : '—';
+                    return `<option value="${escapeHtml(candidate.label)}">${escapeHtml(candidate.label)} · Confidence ${probabilityText}</option>`;
+                })
+                .join('');
+            const source = metadata.source || channel.status?.message || 'unknown';
+            return `<td data-segment="${escapeHtml(meta.segmentId)}"
+                data-start="${meta.start}" data-end="${meta.end}"
+                title="${escapeHtml(source)}">
+                <input class="matrix-editor" list="labels-${tier.key}" value="${escapeHtml(prediction.label || '')}"
+                    aria-label="${tier.name} standard symbol"
+                    onchange="editLabel(${eventIndex}, '${tier.key}', this.value)">
+                <select class="candidate-select"
+                    aria-label="${tier.name} prediction candidates"
+                    onchange="selectCandidateFromDropdown(${eventIndex}, '${tier.key}', this)">
+                    <option value="">Candidates: label · confidence</option>
+                    ${candidates}
+                </select>
+                <div class="matrix-meta">
+                    <span>${confidenceText}</span>
+                    <span class="${modified ? 'reviewed' : ''}">${modified ? 'Human reviewed' : 'Model suggestion'}</span>
+                </div>
+            </td>`;
+        }).join('');
+        return `<tr>
+            <th scope="row"><span class="tier-label ${tier.key}">${tier.name}</span></th>
+            ${cells}
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        ${renderTimeline(results, metas)}
+        <section class="utterance-overview">
+            <h3>Utterance sequence (standard v3.0 · H1/H2)</h3>
+            <p class="utterance-now" id="utteranceNow"></p>
+            <div class="utterance-sequence" id="utteranceSequence">${sequence}</div>
+        </section>
+        <div class="annotation-matrix-wrap">
+            <table class="annotation-matrix">
+                <thead><tr><th scope="col">Tier</th>${header}</tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+        ${Object.entries(STANDARD_LABELS).map(([key, values]) =>
+            `<datalist id="labels-${key}">${values.map(value => `<option value="${value}"></option>`).join('')}</datalist>`
+        ).join('')}
+        <details class="matrix-details">
+            <summary>Technical metadata</summary>
+            <pre>${escapeHtml(JSON.stringify(resultsForDisplay(results), null, 2))}</pre>
+        </details>`;
+    syncUtteranceToPlayhead(Number(document.getElementById('videoPlayer').currentTime || 0) * 1000);
+}
+
+function renderSummary(results) {
+    let available = 0;
+    let modified = 0;
+    const segmentIds = new Map();
+    let visibleCount = 0;
+    results.forEach((event, index) => {
+        const meta = segmentOf(event, index, segmentIds);
+        if (isUnannotatedSpan(meta.start, meta.end)) return;
+        visibleCount += 1;
+        const channels = event.channels || {};
+        CHANNEL_KEYS.forEach(key => {
+            const channel = channels[key];
+            if (channel?.status?.code === 'OK') available++;
+            if (channel?.metadata?.human_modified) modified++;
+        });
+    });
+    const total = visibleCount * CHANNEL_COUNT;
+    document.getElementById('resultSummary').innerHTML = `
+        <span class="summary-pill"><strong>${visibleCount}</strong> segmented events</span>
+        <span class="summary-pill"><strong>${available}/${total}</strong> available channels</span>
+        <span class="summary-pill"><strong>${modified}</strong> human edits</span>
+        <span class="summary-pill">${hasUnsavedChanges ? '● Unsaved changes' : '✓ Synced'}</span>`;
+    const saveButton = document.getElementById('saveBtn');
+    saveButton.textContent = hasUnsavedChanges ? 'Save changes · Unsaved' : 'Save changes';
+}
+
+function toggleJson(el) {
+    const raw = el.nextElementSibling;
+    raw.style.display = raw.style.display === 'none' ? 'block' : 'none';
+}
+
+function labelIsStandard(listName, value) {
+    const allowed = STANDARD_LABELS[listName] || [];
+    return allowed.includes(String(value || '').trim());
+}
+
+function manualLabelsAreStandard() {
+    for (const event of currentResults) {
+        for (const key of CHANNEL_KEYS) {
+            const channel = event.channels?.[key];
+            if (!channel) continue;
+            const metadata = channel.metadata || {};
+            const human = metadata.human_modified || metadata.source === 'human_annotation';
+            if (!human) continue;
+            if (!labelIsStandard(key, channel.prediction?.label)) return false;
+        }
+    }
+    return true;
+}
+
+function editLabel(eventIndex, channelName, value) {
+    const channel = currentResults[eventIndex]?.channels?.[channelName];
+    if (!channel) return;
+    const label = String(value || '').trim();
+    if (!labelIsStandard(channelName, label)) {
+        toast('Invalid input', 'error');
+        renderResults(currentResults, true);
+        return;
+    }
+    channel.prediction = channel.prediction || {};
+    channel.metadata = channel.metadata || {};
+    if (!channel.metadata.human_modified) {
+        channel.metadata.model_label = channel.prediction.label || null;
+        channel.metadata.original_source = channel.metadata.source || null;
+    }
+    channel.prediction.label = label;
+    channel.metadata.human_label = label;
+    channel.metadata.human_modified = true;
+    channel.metadata.modified_at = new Date().toISOString();
+    channel.metadata.source = 'human_annotation';
+    channel.status = {code: 'OK', message: 'human annotation'};
+    hasUnsavedChanges = true;
+    renderResults(currentResults, true);
+}
+
+function selectCandidate(eventIndex, channelName, encodedLabel) {
+    editLabel(eventIndex, channelName, decodeURIComponent(encodedLabel));
+}
+
+function selectCandidateFromDropdown(eventIndex, channelName, select) {
+    if (!select.value) return;
+    editLabel(eventIndex, channelName, select.value);
+}
+
+async function saveEdits() {
+    if (!currentTaskId || !currentResults.length) {
+        toast('There are no results to save', 'error');
+        return false;
+    }
+    if (!manualLabelsAreStandard()) {
+        toast('Invalid input', 'error');
+        return false;
+    }
+    const button = document.getElementById('saveBtn');
+    button.disabled = true;
+    try {
+        const response = await fetch('/save/' + encodeURIComponent(currentTaskId), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({result: currentResults})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Save failed');
+        hasUnsavedChanges = false;
+        renderSummary(currentResults);
+        toast('Annotations saved', 'success');
+        refreshHistory(1);
+        return true;
+    } catch (error) {
+        toast('Save failed: ' + error.message, 'error');
+        return false;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function exportResult(format) {
+    const saved = await saveEdits();
+    if (!saved) return;
+    const link = document.createElement('a');
+    link.href = `/export/${encodeURIComponent(currentTaskId)}?format=${format}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+async function refreshHistory(page) {
+    const select = document.getElementById('historySelect');
+    const requested = Number.isInteger(page) ? page : historyPage;
+    const previous = select.value;
+    try {
+        const response = await fetch(`/api/annotations?page=${requested}&page_size=8`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Load failed');
+        const items = data.items || [];
+        historyPage = data.page || 1;
+        historyPages = data.pages || 1;
+        select.innerHTML = items.length
+            ? items.map(item => {
+                const title = `${item.video_name || item.task_id || item.name} · ${item.event_count} events · ${item.saved_at || ''}`;
+                return `<option value="${escapeHtml(item.name)}">${escapeHtml(title)}</option>`;
+            }).join('')
+            : '<option value="">No saved annotations</option>';
+        if (previous && [...select.options].some(option => option.value === previous)) {
+            select.value = previous;
+        }
+    } catch (error) {
+        select.innerHTML = '<option value="">Could not load annotation history</option>';
+    }
+    const pageLabel = document.getElementById('historyPage');
+    pageLabel.textContent = `${historyPage} / ${historyPages}`;
+    document.getElementById('historyPrev').disabled = historyPage <= 1;
+    document.getElementById('historyNext').disabled = historyPage >= historyPages;
+}
+
+function changeHistoryPage(delta) {
+    const next = historyPage + delta;
+    if (next < 1 || next > historyPages) return;
+    refreshHistory(next);
+}
+
+async function loadHistory() {
+    const name = document.getElementById('historySelect').value;
+    if (!name) {
+        toast('Select a saved annotation', 'error');
+        return;
+    }
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Open another annotation anyway?')) {
+        return;
+    }
+    try {
+        const response = await fetch('/api/annotations/' + encodeURIComponent(name));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Load failed');
+        currentTaskId = data.task_id;
+        currentHistoryName = name;
+        renderResults(data.result);
+        toast('Saved annotations loaded and ready to edit', 'success');
+    } catch (error) {
+        toast('Load failed: ' + error.message, 'error');
+    }
+}
+
+async function deleteHistory() {
+    const select = document.getElementById('historySelect');
+    const name = select.value;
+    if (!name) {
+        toast('Select a saved annotation to delete', 'error');
+        return;
+    }
+    const label = select.selectedOptions[0]?.textContent || name;
+    if (!confirm(`Delete this saved annotation?\n${label}\nThis cannot be undone.`)) return;
+    try {
+        const response = await fetch('/api/annotations/' + encodeURIComponent(name), {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Delete failed');
+        if (currentHistoryName === name) {
+            currentHistoryName = null;
+            hasUnsavedChanges = Boolean(currentResults.length);
+            toast('The saved file was deleted. This screen still shows it; save again if you want to keep it.', 'success');
+        } else {
+            toast('Saved annotation deleted', 'success');
+        }
+        await refreshHistory(historyPage);
+    } catch (error) {
+        toast('Delete failed: ' + error.message, 'error');
+    }
+}
+
+function resetAll() {
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Reset anyway?')) {
+        return;
+    }
+    selectedFile = null;
+    currentTaskId = null;
+    currentHistoryName = null;
+    currentResults = [];
+    if (pollInterval) clearInterval(pollInterval);
+    document.getElementById('fileInput').value = '';
+    document.getElementById('videoPreview').style.display = 'none';
+    document.getElementById('inputPanel').classList.remove('has-video');
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    document.getElementById('videoPlayer').src = '';
+    document.getElementById('predictBtn').disabled = true;
+    const manualBtn = document.getElementById('manualSegBtn');
+    if (manualBtn) manualBtn.disabled = true;
+    document.getElementById('progressSection').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('resultsContent').innerHTML = '';
+    showEmptyState('Waiting for predictions', 'Upload a video on the left and run prediction. Event results will appear here.');
+}
+
+function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 5000);
+}
+
+function updateVideoProgressBar(input) {
+    if (!input) return;
+    const maximum = Number(input.max) || 1;
+    const percent = Math.max(0, Math.min(100, Number(input.value) / maximum * 100));
+    input.style.background = `linear-gradient(90deg,var(--primary) ${percent}%,#101c2f ${percent}%)`;
+}
+
+let videoScrubbing = false;
+
+function beginVideoScrub(event) {
+    videoScrubbing = true;
+    const video = document.getElementById('videoPlayer');
+    if (video) {
+        delete video.dataset.stopAt;
+        video.pause();
+    }
+    if (event?.currentTarget?.setPointerCapture && event.pointerId !== undefined) {
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch (error) {}
+    }
+    window.addEventListener('pointerup', endVideoScrub, {once: true});
+    window.addEventListener('pointercancel', endVideoScrub, {once: true});
+}
+
+function endVideoScrub() {
+    if (!videoScrubbing) return;
+    videoScrubbing = false;
+    const progress = document.getElementById('timelineProgress');
+    if (progress) seekVideoProgress(progress);
+}
+
+function seekVideoProgress(input) {
+    const video = document.getElementById('videoPlayer');
+    if (!video || !input) return;
+    const seconds = Number(input.value || 0) / 1000;
+    if (!Number.isFinite(seconds)) return;
+    delete video.dataset.stopAt;
+    const duration = Number(video.duration);
+    const target = Number.isFinite(duration) && duration > 0
+        ? Math.min(Math.max(0, seconds), Math.max(0, duration - 0.04))
+        : Math.max(0, seconds);
+    video.pause();
+    if (Math.abs((Number(video.currentTime) || 0) - target) > 0.03) {
+        video.currentTime = target;
+    }
+    updateVideoProgressBar(input);
+    syncUtteranceToPlayhead(target * 1000);
+}
+
+function seekToMs(startMs, endMs) {
+    const video = document.getElementById('videoPlayer');
+    video.currentTime = Number(startMs || 0) / 1000;
+    video.dataset.stopAt = String(Number(endMs || 0) / 1000);
+    syncUtteranceToPlayhead(Number(startMs || 0));
+    video.play().catch(() => {});
+}
+
+document.getElementById('videoPlayer').addEventListener('timeupdate', event => {
+    const currentMs = event.currentTarget.currentTime * 1000;
+    const progress = document.getElementById('timelineProgress');
+    if (progress && !videoScrubbing && !event.currentTarget.paused) {
+        progress.value = String(currentMs);
+        updateVideoProgressBar(progress);
+    }
+    syncUtteranceToPlayhead(currentMs);
+    const stopAt = Number(event.currentTarget.dataset.stopAt);
+    if (Number.isFinite(stopAt) && stopAt > 0 && event.currentTarget.currentTime >= stopAt) {
+        event.currentTarget.pause();
+        delete event.currentTarget.dataset.stopAt;
+    }
+});
+document.getElementById('videoPlayer').addEventListener('loadedmetadata', () => {
+    if (currentResults.length) renderResults(currentResults, true);
+});
+
+refreshHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+seed: 42
+paths:
+  labels_csv: data/labels.csv
+  features_dir: /tmp/location_features_smoke
+  splits_dir: data/splits_18_5_5
+  location_labels: configs/location_labels.json
+  dataset_yaml: configs/dataset.yaml
+sampling:
+  num_frames: 24
+  max_frames: 120
+  use_all_frames: false
+  strategy: uniform
+pose:
+  device: cuda
+  config: null
+  checkpoint: null
+  score_thresh: 0.3
+  joint_names:
+  - nose
+  - left_eye
+  - right_eye
+  - left_ear
+  - right_ear
+  - left_shoulder
+  - right_shoulder
+  - left_elbow
+  - right_elbow
+  - left_wrist
+  - right_wrist
+  - left_hip
+  - right_hip
+  - left_knee
+  - right_knee
+  - left_ankle
+  - right_ankle
+  left_shoulder: left_shoulder
+  right_shoulder: right_shoulder
+  left_hip: left_hip
+  right_hip: right_hip
+  head: nose
+hand:
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  hand_center: wrist
+features:
+  include_dxy: true
+  include_dists: true
+  include_velocity: false
+  joint_distances:
+  - left_shoulder
+  - right_shoulder
+  - left_elbow
+  - right_elbow
+  - left_hip
+  - right_hip
+  - nose
+training:
+  epochs: 1
+  batch_size: 4
+  lr: 0.0003
+  weight_smooth: 0.2
+  num_workers: 0
+  save_metric: macro_f1
+  pool: logsumexp
+model:
+  name: frame_mlp
+  hidden_dim: 256
+  emb_dim: 256
+  dropout: 0.1
+  tau: 0.5
+  hand_rep: center

@@ -1,0 +1,8 @@
+__base__: configs/default.yaml
+model:
+  name: frame_mlp
+  hidden_dim: 256
+  emb_dim: 256
+  dropout: 0.1
+training:
+  pool: logsumexp
